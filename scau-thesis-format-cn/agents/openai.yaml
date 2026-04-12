@@ -1,0 +1,4 @@
+interface:
+  display_name: "华农毕业论文格式"
+  short_description: "按华农 2024 官方模板与规范装版、审查、修复并循环收敛毕业论文终稿格式"
+  default_prompt: "Use $scau-thesis-format-cn to start from the bundled 2024 South China Agricultural University official thesis template, fill in user-provided thesis content, audit the rendered Word/PDF formatting, and iteratively repair insertion or formatting issues until the thesis is submission-ready."

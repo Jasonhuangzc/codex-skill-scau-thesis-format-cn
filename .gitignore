@@ -1,0 +1,15 @@
+scau-thesis-format-cn/assets/official-2024/*
+!scau-thesis-format-cn/assets/official-2024/.gitkeep
+!scau-thesis-format-cn/assets/official-2024/manifest.json
+
+scau-thesis-format-cn/assets/template/*
+!scau-thesis-format-cn/assets/template/.gitkeep
+
+scau-thesis-format-cn/scripts/__pycache__/
+scau-thesis-format-cn/**/*.pyc
+
+tmp/
+work/
+output/
+outputs/
+_scau_thesis_output/

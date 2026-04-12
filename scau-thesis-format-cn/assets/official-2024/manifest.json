@@ -1,0 +1,22 @@
+{
+  "package_name": "华南农业大学本科毕业论文（设计）撰写规范（2024年修订）",
+  "required_files": [
+    {
+      "filename": "附件1-5.华南农业大学本科毕业论文（设计）撰写规范（封面模板、原创性声明及使用授权声明、正文结构参考样式、参考文献著录规则、评分参考标准）.pdf",
+      "sha256": "54D8B5328B62FC5F4C5156FBC3FC28C7CC826C8E7EFDE1C0AD3B486BF0D85216"
+    },
+    {
+      "filename": "附件6.华南农业大学本科毕业论文（设计）格式模板.doc",
+      "sha256": "1F3E3BE57848B3323AA5F971828FA9783B42EB7B6F0C39B33AAE7659B1C421FD"
+    },
+    {
+      "filename": "关于印发《华南农业大学本科毕业论文（设计）撰写规范》（2024年修订）的通知.doc",
+      "sha256": "A3D5C8520C813303832A9FCD420B96A26EB4BE944899D17F7E4EFC89D0CBF7C9"
+    }
+  ],
+  "derived_template_outputs": [
+    "assets/template/scau-undergrad-thesis-template.doc",
+    "assets/template/scau-undergrad-thesis-template.docx",
+    "assets/template/scau-undergrad-thesis-template-preview.pdf"
+  ]
+}
