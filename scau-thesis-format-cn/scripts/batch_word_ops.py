@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         dest="output_path",
         help="Optional output path. Defaults to overwriting the input file.",
     )
+    parser.add_argument(
+        "--log-jsonl",
+        dest="log_jsonl_path",
+        help="Optional JSONL log path. Writes one stage event per operation for long-running files.",
+    )
     return parser.parse_args()
 
 
@@ -56,6 +61,14 @@ def load_plan(plan_path: Path) -> list[dict[str, object]]:
     if not isinstance(data, list):
         raise ValueError("Plan file must be a JSON list of operations.")
     return data
+
+
+def append_stage_log(log_path: Path | None, event: dict[str, object]) -> None:
+    if log_path is None:
+        return
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
 def open_document(path: Path):
@@ -223,6 +236,48 @@ def refresh_contents(
     result.append({"action": "refresh_contents", "result": "applied", "mode": mode})
     if cleanup_special_entries:
         cleanup_contents_entries(document, result)
+
+
+def set_track_revisions(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    enabled = bool(operation.get("enabled", False))
+    document.TrackRevisions = -1 if enabled else 0
+    result.append(
+        {
+            "action": "set_track_revisions",
+            "result": "applied",
+            "enabled": enabled,
+        }
+    )
+
+
+def accept_all_revisions(document, result: list[dict[str, object]]) -> None:
+    count_before = int(document.Revisions.Count)
+    if count_before > 0:
+        document.Revisions.AcceptAll()
+    count_after = int(document.Revisions.Count)
+    result.append(
+        {
+            "action": "accept_all_revisions",
+            "result": "applied",
+            "revisions_before": count_before,
+            "revisions_after": count_after,
+        }
+    )
+
+
+def delete_all_comments(document, result: list[dict[str, object]]) -> None:
+    count_before = int(document.Comments.Count)
+    if count_before > 0:
+        document.DeleteAllComments()
+    count_after = int(document.Comments.Count)
+    result.append(
+        {
+            "action": "delete_all_comments",
+            "result": "applied",
+            "comments_before": count_before,
+            "comments_after": count_after,
+        }
+    )
 
 
 def normalize_section_font_range(
@@ -446,10 +501,25 @@ def insert_image_after(document, operation: dict[str, object], result: list[dict
     )
 
 
-def apply_operations(document, operations: list[dict[str, object]]) -> list[dict[str, object]]:
+def apply_operations(
+    document,
+    operations: list[dict[str, object]],
+    *,
+    log_jsonl_path: Path | None = None,
+) -> list[dict[str, object]]:
     results: list[dict[str, object]] = []
-    for operation in operations:
+    total = len(operations)
+    for index, operation in enumerate(operations, start=1):
         action = operation.get("action")
+        append_stage_log(
+            log_jsonl_path,
+            {
+                "event": "start",
+                "index": index,
+                "total": total,
+                "action": action,
+            },
+        )
         if action == "replace_text":
             replace_text(document, operation, results)
         elif action == "insert_text_after":
@@ -465,12 +535,27 @@ def apply_operations(document, operations: list[dict[str, object]]) -> list[dict
                 cleanup_special_entries=bool(operation.get("cleanup_special_entries", False)),
                 mode=str(operation.get("mode", "full")),
             )
+        elif action == "set_track_revisions":
+            set_track_revisions(document, operation, results)
+        elif action == "accept_all_revisions":
+            accept_all_revisions(document, results)
+        elif action == "delete_all_comments":
+            delete_all_comments(document, results)
         elif action == "cleanup_contents_entries":
             cleanup_contents_entries(document, results)
         elif action == "normalize_tail_section_fonts":
             normalize_tail_section_fonts(document, operation, results)
         else:
             raise ValueError(f"Unsupported action: {action}")
+        append_stage_log(
+            log_jsonl_path,
+            {
+                "event": "done",
+                "index": index,
+                "total": total,
+                "action": action,
+            },
+        )
     return results
 
 
@@ -495,15 +580,17 @@ def main() -> int:
         plan_path = resolve_path(args.plan_path, {".json"})
         operations = load_plan(plan_path)
         output_path = Path(args.output_path).expanduser().resolve() if args.output_path else None
+        log_jsonl_path = Path(args.log_jsonl_path).expanduser().resolve() if args.log_jsonl_path else None
 
         pythoncom_module, word, document = open_document(input_path)
-        results = apply_operations(document, operations)
+        results = apply_operations(document, operations, log_jsonl_path=log_jsonl_path)
         saved_path = save_document(document, input_path, output_path)
         print(
             json.dumps(
                 {
                     "input_file": str(input_path),
                     "saved_file": str(saved_path),
+                    "log_jsonl": str(log_jsonl_path) if log_jsonl_path else None,
                     "operation_results": results,
                 },
                 ensure_ascii=False,
