@@ -95,6 +95,27 @@ Do not start by deleting sample content across the whole document. Replace the d
 - Do not remove comments just because the corresponding text was replaced.
 - If a comment is attached to a paragraph that acts as a style or structure donor, keep that paragraph position stable.
 - Only create a clean no-comment copy after the user asks for the submission file.
+- When the document has review data, process `Comments + Revisions` together:
+  - check whether old revisions must be accepted first
+  - disable `TrackRevisions` before bulk replacements to avoid creating hundreds of new revisions
+  - if using Word COM, run review cleanup as its own stage and save to a new copy before the main text-replacement stage
+
+## 5.1 Large final-stage Word file strategy (Windows)
+
+For image-heavy near-final documents, prefer staged runs:
+
+1. Stage A: review-state handling (`set_track_revisions`, `accept_all_revisions`)
+2. Stage B: main wording replacements
+3. Stage C: expensive formatting (italics pass, TOC cleanup, tail-section font normalization)
+4. Stage D: optional English abstract typography micro-fixes
+
+After each stage:
+
+- `SaveAs2` to a new file name
+- export once
+- audit once
+
+This isolates Word COM instability and makes freeze points diagnosable.
 
 ## 6. Verify rendered output
 
