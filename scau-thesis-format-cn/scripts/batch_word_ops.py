@@ -34,6 +34,11 @@ def parse_args() -> argparse.Namespace:
         dest="output_path",
         help="Optional output path. Defaults to overwriting the input file.",
     )
+    parser.add_argument(
+        "--log-jsonl",
+        dest="log_jsonl_path",
+        help="Optional JSONL log path. Writes one stage event per operation for long-running files.",
+    )
     return parser.parse_args()
 
 
@@ -56,6 +61,14 @@ def load_plan(plan_path: Path) -> list[dict[str, object]]:
     if not isinstance(data, list):
         raise ValueError("Plan file must be a JSON list of operations.")
     return data
+
+
+def append_stage_log(log_path: Path | None, event: dict[str, object]) -> None:
+    if log_path is None:
+        return
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False) + "\n")
 
 
 def open_document(path: Path):
@@ -223,6 +236,121 @@ def refresh_contents(
     result.append({"action": "refresh_contents", "result": "applied", "mode": mode})
     if cleanup_special_entries:
         cleanup_contents_entries(document, result)
+
+
+def normalize_contents_fonts(
+    document,
+    operation: dict[str, object],
+    result: list[dict[str, object]],
+) -> None:
+    if int(document.TablesOfContents.Count) == 0:
+        result.append(
+            {
+                "action": "normalize_contents_fonts",
+                "result": "not_found",
+                "note": "未检测到目录域。",
+            }
+        )
+        return
+
+    far_east_font = str(operation.get("far_east_font", "宋体"))
+    ascii_font = str(operation.get("ascii_font", "Times New Roman"))
+    size = operation.get("size")
+    western_char_re = re.compile(str(operation.get("western_char_pattern", r"[A-Za-z0-9.]")))
+    updated_characters = 0
+
+    for toc_index in range(1, document.TablesOfContents.Count + 1):
+        toc = document.TablesOfContents(toc_index)
+        toc_range = toc.Range
+        for char_index in range(1, toc_range.Characters.Count + 1):
+            char_range = toc_range.Characters(char_index)
+            char_text = char_range.Text
+            if char_text in {"\r", "\x07", "\t"}:
+                continue
+            font = char_range.Font
+            if western_char_re.match(char_text):
+                font.NameAscii = ascii_font
+                font.NameOther = ascii_font
+                font.NameBi = ascii_font
+                font.Name = ascii_font
+            else:
+                font.NameFarEast = far_east_font
+            if isinstance(size, (int, float)):
+                font.Size = float(size)
+            updated_characters += 1
+
+    result.append(
+        {
+            "action": "normalize_contents_fonts",
+            "result": "applied",
+            "far_east_font": far_east_font,
+            "ascii_font": ascii_font,
+            "western_char_pattern": western_char_re.pattern,
+            "updated_characters": updated_characters,
+        }
+    )
+
+
+def finalize_contents(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    refresh_mode = str(operation.get("mode", "full"))
+    refresh_contents(
+        document,
+        result,
+        cleanup_special_entries=False,
+        mode=refresh_mode,
+    )
+    cleanup_contents_entries(document, result)
+    normalize_contents_fonts(document, operation, result)
+    result.append(
+        {
+            "action": "finalize_contents",
+            "result": "applied",
+            "mode": refresh_mode,
+            "sequence": ["refresh_contents", "cleanup_contents_entries", "normalize_contents_fonts"],
+        }
+    )
+
+
+def set_track_revisions(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    enabled = bool(operation.get("enabled", False))
+    document.TrackRevisions = -1 if enabled else 0
+    result.append(
+        {
+            "action": "set_track_revisions",
+            "result": "applied",
+            "enabled": enabled,
+        }
+    )
+
+
+def accept_all_revisions(document, result: list[dict[str, object]]) -> None:
+    count_before = int(document.Revisions.Count)
+    if count_before > 0:
+        document.Revisions.AcceptAll()
+    count_after = int(document.Revisions.Count)
+    result.append(
+        {
+            "action": "accept_all_revisions",
+            "result": "applied",
+            "revisions_before": count_before,
+            "revisions_after": count_after,
+        }
+    )
+
+
+def delete_all_comments(document, result: list[dict[str, object]]) -> None:
+    count_before = int(document.Comments.Count)
+    if count_before > 0:
+        document.DeleteAllComments()
+    count_after = int(document.Comments.Count)
+    result.append(
+        {
+            "action": "delete_all_comments",
+            "result": "applied",
+            "comments_before": count_before,
+            "comments_after": count_after,
+        }
+    )
 
 
 def normalize_section_font_range(
@@ -412,6 +540,49 @@ def replace_text(document, operation: dict[str, object], result: list[dict[str, 
     )
 
 
+def normalize_ascii_digit_font(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    wildcard_pattern = str(operation.get("wildcard_pattern", "[A-Za-z0-9.]@"))
+    ascii_font = str(operation.get("ascii_font", "Times New Roman"))
+    far_east_font = operation.get("far_east_font")
+    size = operation.get("size")
+    if not wildcard_pattern.strip():
+        raise ValueError("`wildcard_pattern` cannot be empty for normalize_ascii_digit_font.")
+
+    normalized_count = 0
+    search_start = document.Content.Start
+    while search_start <= document.Content.End:
+        rng = document.Range(search_start, document.Content.End)
+        finder = rng.Find
+        finder.ClearFormatting()
+        finder.Text = wildcard_pattern
+        finder.Forward = True
+        finder.Wrap = WD_FIND_STOP
+        finder.MatchWildcards = True
+        if not finder.Execute():
+            break
+
+        rng.Font.NameAscii = ascii_font
+        rng.Font.NameOther = ascii_font
+        rng.Font.NameBi = ascii_font
+        rng.Font.Name = ascii_font
+        if isinstance(far_east_font, str) and far_east_font:
+            rng.Font.NameFarEast = far_east_font
+        if isinstance(size, (int, float)):
+            rng.Font.Size = float(size)
+        normalized_count += 1
+        search_start = rng.End
+
+    result.append(
+        {
+            "action": "normalize_ascii_digit_font",
+            "wildcard_pattern": wildcard_pattern,
+            "ascii_font": ascii_font,
+            "result": "applied" if normalized_count else "not_found",
+            "normalized_count": normalized_count,
+        }
+    )
+
+
 def insert_text_after(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
     rng = get_anchor_range(document, operation)
     rng.Collapse(WD_COLLAPSE_END)
@@ -446,12 +617,29 @@ def insert_image_after(document, operation: dict[str, object], result: list[dict
     )
 
 
-def apply_operations(document, operations: list[dict[str, object]]) -> list[dict[str, object]]:
+def apply_operations(
+    document,
+    operations: list[dict[str, object]],
+    *,
+    log_jsonl_path: Path | None = None,
+) -> list[dict[str, object]]:
     results: list[dict[str, object]] = []
-    for operation in operations:
+    total = len(operations)
+    for index, operation in enumerate(operations, start=1):
         action = operation.get("action")
+        append_stage_log(
+            log_jsonl_path,
+            {
+                "event": "start",
+                "index": index,
+                "total": total,
+                "action": action,
+            },
+        )
         if action == "replace_text":
             replace_text(document, operation, results)
+        elif action == "normalize_ascii_digit_font":
+            normalize_ascii_digit_font(document, operation, results)
         elif action == "insert_text_after":
             insert_text_after(document, operation, results)
         elif action == "insert_page_break_before":
@@ -465,12 +653,31 @@ def apply_operations(document, operations: list[dict[str, object]]) -> list[dict
                 cleanup_special_entries=bool(operation.get("cleanup_special_entries", False)),
                 mode=str(operation.get("mode", "full")),
             )
+        elif action == "normalize_contents_fonts":
+            normalize_contents_fonts(document, operation, results)
+        elif action == "finalize_contents":
+            finalize_contents(document, operation, results)
+        elif action == "set_track_revisions":
+            set_track_revisions(document, operation, results)
+        elif action == "accept_all_revisions":
+            accept_all_revisions(document, results)
+        elif action == "delete_all_comments":
+            delete_all_comments(document, results)
         elif action == "cleanup_contents_entries":
             cleanup_contents_entries(document, results)
         elif action == "normalize_tail_section_fonts":
             normalize_tail_section_fonts(document, operation, results)
         else:
             raise ValueError(f"Unsupported action: {action}")
+        append_stage_log(
+            log_jsonl_path,
+            {
+                "event": "done",
+                "index": index,
+                "total": total,
+                "action": action,
+            },
+        )
     return results
 
 
@@ -495,15 +702,17 @@ def main() -> int:
         plan_path = resolve_path(args.plan_path, {".json"})
         operations = load_plan(plan_path)
         output_path = Path(args.output_path).expanduser().resolve() if args.output_path else None
+        log_jsonl_path = Path(args.log_jsonl_path).expanduser().resolve() if args.log_jsonl_path else None
 
         pythoncom_module, word, document = open_document(input_path)
-        results = apply_operations(document, operations)
+        results = apply_operations(document, operations, log_jsonl_path=log_jsonl_path)
         saved_path = save_document(document, input_path, output_path)
         print(
             json.dumps(
                 {
                     "input_file": str(input_path),
                     "saved_file": str(saved_path),
+                    "log_jsonl": str(log_jsonl_path) if log_jsonl_path else None,
                     "operation_results": results,
                 },
                 ensure_ascii=False,

@@ -24,7 +24,7 @@ Act as a template-driven formatter and rendered-layout auditor, not a content re
   - `关于印发《华南农业大学本科毕业论文（设计）撰写规范》（2024年修订）的通知.doc`
 - Preserve academic meaning. Fix structure, layout, fonts, numbering, captions, bibliography format, and template compliance only.
 - Prefer targeted repair over rebuilding the whole document.
-- For large local Word files on Windows, prefer one-session Word COM operations and one save at the end.
+- For large local Word files on Windows, do not run one huge all-in-one pass; split into staged passes and save each stage to a new copy with `SaveAs2`.
 - Treat rendered pages as the final evidence for pagination, caption placement, hanging indent, continued tables, and page-number alignment.
 - Treat Word structure evidence as the final evidence for fonts, bold boundaries, label/body split formatting, TOC special entries, and tail-section style drift.
 - If the school rules are silent, mark the point as `以模板为准` rather than inventing a hard rule.
@@ -147,25 +147,45 @@ Use these default repair routes.
 
 When the thesis is large or the user is iterating near the end:
 
-- keep one Word session
-- apply all planned operations
-- save once
-- re-export once
-- re-audit once
+- always start from comments + revisions together, not comments only
+- in each repair stage:
+  - keep one Word session
+  - apply only one coherent group of operations
+  - save to a new copy with `SaveAs2`
+  - re-export once
+  - re-audit once
+- for the next stage, open the newest copy and repeat
+- always disable revision recording before bulk text replacement, otherwise new revisions will keep growing
 
 For `scripts/batch_word_ops.py`, prefer these actions:
 
+- `set_track_revisions`
+  - set `enabled: false` before replacement-heavy stages
+- `accept_all_revisions`
+  - accept legacy revisions before content replacement stages when the user asks for a clean baseline
+- `delete_all_comments`
+  - optional and usually only for final clean-copy stages
 - `replace_text`
   - now uses style-preserving replacement rather than a raw global replace
 - `insert_text_after`
   - now copies surrounding font information for inserted text
+- `normalize_ascii_digit_font`
+  - use for targeted western-letter/digit font normalization
+  - default wildcard is `[A-Za-z0-9.]@` (includes periods so decimal values like `0.05` are normalized in one pass)
 - `refresh_contents`
   - use `mode: "full"` only when headings really changed
   - use `mode: "page_numbers_only"` when only pagination changed
 - `cleanup_contents_entries`
   - removes heading-line spacing leakage from TOC `参考文献` and `致谢`
+- `normalize_contents_fonts`
+  - only changes TOC range (does not touch end-of-document `参考文献` / `致谢` sections)
+  - normalize TOC Chinese chars to `宋体`; English/digits/`.` to `Times New Roman`
+- `finalize_contents`
+  - runs `refresh_contents -> cleanup_contents_entries -> normalize_contents_fonts` in one precise sequence
 - `normalize_tail_section_fonts`
   - restores `参考文献` and `致谢` title/body fonts, bibliography hanging indent, acknowledgement first-line indent, and 1.5-line spacing
+- `--log-jsonl`
+  - write per-stage progress events for long documents so stuck points are traceable
 
 ## High-risk final checks
 
@@ -177,6 +197,11 @@ Always prioritize these before declaring the thesis submission-ready:
 - `致        谢` heading spacing versus TOC `致谢` no-spacing
 - bibliography entry font pairing, punctuation, hanging indent, and language grouping
 - citation punctuation width and ordering
+- TOC high-risk pair:
+  - TOC `参考文献` / `致谢` entries must not keep heading-character spacing
+  - TOC font pairing must be Chinese `宋体`, English/digits/`.` `Times New Roman`
+- body repeated punctuation check for accidental duplicates such as `。。` and `，，`
+- body paragraph line spacing should remain `1.5` (`LineSpacingRule = 1`)
 - figure caption below figure, figure note below caption, no figure-caption split across pages
 - continued table headers and table-note placement
 - TOC page numbers aligned with the rendered file
@@ -188,6 +213,8 @@ Always prioritize these before declaring the thesis submission-ready:
 - Do not use full TOC refresh as the default final-step cleanup when a lighter cleanup path is enough.
 - Do not rewrite prose just to solve a formatting problem.
 - Do not remove comments before the working copy has been verified.
+- Do not leave `TrackRevisions` enabled during bulk global replacements.
+- Do not rely on `document.Save()` for large final-stage documents when `SaveAs2` stage copies are feasible.
 
 ## Expected outputs
 
