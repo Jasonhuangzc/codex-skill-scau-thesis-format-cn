@@ -49,6 +49,11 @@ These rules come directly from the 50 Word comments in the official 2024 `附件
   - page numbers right aligned
   - leader dots
 - refresh contents after heading or pagination edits
+- the final TOC repair order is:
+  - update fields
+  - clean TOC `参考文献` and `致谢` entries
+  - normalize TOC Chinese characters to `宋体`
+  - normalize TOC English, digits, and `.` to `Times New Roman`
 - in the contents list:
   - `参考文献` does not insert character spacing
   - `致谢` does not insert character spacing
@@ -96,12 +101,13 @@ These rules come directly from the 50 Word comments in the official 2024 `附件
 - multiple citations at one location:
   - Chinese first
   - foreign-language references second
-  - each language group sorted by year ascending
 - bibliography title line uses `参  考  文  献`
 - bibliography entries:
   - no numbering
   - hanging indent of two characters
   - Chinese references first, foreign references later
+  - Chinese entries sorted by the first author's surname in Hanyu Pinyin order
+  - western-language and Russian entries sorted by the first author's surname in alphabetical order
   - body entries use `宋体 + Times New Roman` small-four
 - bibliography punctuation uses half-width symbols
 - after comma, period, colon, and semicolon, keep one half-width space

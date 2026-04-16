@@ -11,6 +11,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.shared import Pt
 from docx.text.paragraph import Paragraph
 
+from reference_order_utils import sort_reference_entries
 from word_template_utils import (
     default_output_path,
     find_heading_donors,
@@ -28,14 +29,17 @@ from word_template_utils import (
 
 SECTION_MAP = {
     "中文文献": "cn",
-    "英文文献": "en",
+    "英文文献": "foreign",
+    "外文文献": "foreign",
+    "西文文献": "foreign",
+    "俄文文献": "foreign",
 }
 
 
 def parse_reference_source(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
-    grouped = {"cn": [], "en": []}
+    grouped = {"cn": [], "foreign": []}
     current: str | None = None
     saw_named_sections = any(
         SECTION_MAP.get(re.sub(r"^#+\s*", "", line).strip()) is not None
@@ -64,7 +68,7 @@ def parse_reference_source(path: Path) -> list[str]:
             if entry:
                 grouped["cn"].append(entry)
 
-    combined = grouped["cn"] + grouped["en"]
+    combined = sort_reference_entries(grouped["cn"]) + sort_reference_entries(grouped["foreign"])
     if not combined:
         raise RuntimeError(f"No reference entries found in source file: {path}")
     return combined

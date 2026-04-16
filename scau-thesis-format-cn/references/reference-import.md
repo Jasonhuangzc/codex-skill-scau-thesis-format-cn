@@ -29,6 +29,10 @@ The script reads:
 
 and inserts them in that order.
 
+Within the Chinese block, the script sorts entries by the first author's surname in Hanyu Pinyin order.
+
+Within the foreign-language block, the script sorts entries by the first author's surname in alphabetical order. This block covers western-language and Russian entries in the current skill rule.
+
 ## Commands
 
 Insert and replace the existing reference sample entries:
@@ -53,7 +57,9 @@ python scripts/insert_reference_batch.py `
 
 - finds the `参考文献` heading in the template
 - replaces the existing sample entries unless `--reformat-only` is used
-- keeps Chinese entries first and English entries second
+- keeps Chinese entries first and foreign-language entries second
+- sorts Chinese entries by the first author's surname in Hanyu Pinyin order
+- sorts western-language and Russian entries by the first author's surname in alphabetical order
 - clones the template reference paragraph style from the sample bibliography
 - reapplies one-and-a-half line spacing and zero paragraph spacing
 - reapplies hanging indent as two characters through OOXML character-based indentation
@@ -61,4 +67,5 @@ python scripts/insert_reference_batch.py `
 ## Recommended source shape
 
 - Keep one final bibliography draft file, for example `drafts/references_final.md`.
-- The file should already be grouped by language and should already use the final author-year bibliography direction before batch insertion.
+- The file should already be grouped by language.
+- The insertion script will re-sort each language group to the current SCAU skill rule before writing into the template.

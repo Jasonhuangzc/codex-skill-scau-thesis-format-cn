@@ -175,13 +175,14 @@ For `scripts/batch_word_ops.py`, prefer these actions:
 - `refresh_contents`
   - use `mode: "full"` only when headings really changed
   - use `mode: "page_numbers_only"` when only pagination changed
+  - set `update_fields: true` for the final TOC pass so field results settle before cleanup
 - `cleanup_contents_entries`
   - removes heading-line spacing leakage from TOC `参考文献` and `致谢`
 - `normalize_contents_fonts`
   - only changes TOC range (does not touch end-of-document `参考文献` / `致谢` sections)
   - normalize TOC Chinese chars to `宋体`; English/digits/`.` to `Times New Roman`
 - `finalize_contents`
-  - runs `refresh_contents -> cleanup_contents_entries -> normalize_contents_fonts` in one precise sequence
+  - runs `refresh_contents(update_fields=true) -> cleanup_contents_entries -> normalize_contents_fonts` in one precise sequence
 - `normalize_tail_section_fonts`
   - restores `参考文献` and `致谢` title/body fonts, bibliography hanging indent, acknowledgement first-line indent, and 1.5-line spacing
 - `--log-jsonl`
@@ -196,12 +197,17 @@ Always prioritize these before declaring the thesis submission-ready:
 - `参  考  文  献` heading spacing versus TOC `参考文献` no-spacing
 - `致        谢` heading spacing versus TOC `致谢` no-spacing
 - bibliography entry font pairing, punctuation, hanging indent, and language grouping
+- bibliography ordering rule:
+  - Chinese first
+  - western-language and Russian references second
+  - Chinese entries sorted by the first author's surname in Hanyu Pinyin order
+  - western-language and Russian entries sorted by the first author's surname in alphabetical order
 - citation punctuation width and ordering
 - TOC high-risk pair:
   - TOC `参考文献` / `致谢` entries must not keep heading-character spacing
   - TOC font pairing must be Chinese `宋体`, English/digits/`.` `Times New Roman`
-- body repeated punctuation check for accidental duplicates such as `。。` and `，，`
-- body paragraph line spacing should remain `1.5` (`LineSpacingRule = 1`)
+- body repeated punctuation check for accidental duplicates such as `。。`, `，，`, `；；`, `：：`
+- body paragraph line spacing should remain `1.5` (`LineSpacingRule = 1`), excluding table-cell paragraphs
 - figure caption below figure, figure note below caption, no figure-caption split across pages
 - continued table headers and table-note placement
 - TOC page numbers aligned with the rendered file

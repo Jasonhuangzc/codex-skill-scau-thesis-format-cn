@@ -21,6 +21,10 @@ WD_ALIGN_PARAGRAPH_JUSTIFY = 3
 WD_LINE_SPACE_1PT5 = 1
 SMALL_FOUR_PT = 12
 LEVEL1_HEADING_PT = 14
+TOC_ENTRY_REPLACEMENTS = {
+    "参考文献": "参考文献",
+    "致谢": "致谢",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,7 +61,7 @@ def require_windows() -> None:
 
 
 def load_plan(plan_path: Path) -> list[dict[str, object]]:
-    data = json.loads(plan_path.read_text(encoding="utf-8"))
+    data = json.loads(plan_path.read_text(encoding="utf-8-sig"))
     if not isinstance(data, list):
         raise ValueError("Plan file must be a JSON list of operations.")
     return data
@@ -186,12 +190,32 @@ def apply_paragraph_preset(
         paragraph_format.Alignment = alignment
 
 
+def update_document_fields(document) -> int:
+    updated = 0
+    try:
+        document.Fields.Update()
+        updated += int(document.Fields.Count)
+    except Exception:
+        pass
+    for section_index in range(1, document.Sections.Count + 1):
+        section = document.Sections(section_index)
+        for header in section.Headers:
+            try:
+                header.Range.Fields.Update()
+                updated += int(header.Range.Fields.Count)
+            except Exception:
+                continue
+        for footer in section.Footers:
+            try:
+                footer.Range.Fields.Update()
+                updated += int(footer.Range.Fields.Count)
+            except Exception:
+                continue
+    return updated
+
+
 def cleanup_contents_entries(document, result: list[dict[str, object]]) -> None:
     cleaned: list[dict[str, object]] = []
-    replacements = {
-        "参考文献": "参考文献",
-        "致谢": "致谢",
-    }
     for toc_index in range(1, document.TablesOfContents.Count + 1):
         toc = document.TablesOfContents(toc_index)
         for para_index in range(1, toc.Range.Paragraphs.Count + 1):
@@ -201,7 +225,7 @@ def cleanup_contents_entries(document, result: list[dict[str, object]]) -> None:
                 continue
             entry_text, page_text = raw_text.split("\t", 1)
             compact_entry = compact_spaces(entry_text)
-            replacement = replacements.get(compact_entry)
+            replacement = TOC_ENTRY_REPLACEMENTS.get(compact_entry)
             if replacement and entry_text != replacement:
                 paragraph.Range.Text = f"{replacement}\t{page_text}\r"
                 cleaned.append(
@@ -216,6 +240,7 @@ def cleanup_contents_entries(document, result: list[dict[str, object]]) -> None:
         {
             "action": "cleanup_contents_entries",
             "result": "applied",
+            "scope": "toc_only",
             "updated_entries": cleaned,
         }
     )
@@ -227,15 +252,102 @@ def refresh_contents(
     *,
     cleanup_special_entries: bool = False,
     mode: str = "full",
+    update_fields: bool = False,
 ) -> None:
     for toc in document.TablesOfContents:
         if mode == "page_numbers_only":
             toc.UpdatePageNumbers()
         else:
             toc.Update()
-    result.append({"action": "refresh_contents", "result": "applied", "mode": mode})
+    updated_fields = update_document_fields(document) if update_fields else 0
+    result.append(
+        {
+            "action": "refresh_contents",
+            "result": "applied",
+            "mode": mode,
+            "update_fields": update_fields,
+            "updated_field_count": updated_fields,
+        }
+    )
     if cleanup_special_entries:
         cleanup_contents_entries(document, result)
+
+
+def normalize_contents_fonts(
+    document,
+    result: list[dict[str, object]],
+    *,
+    far_east_font: str = "宋体",
+    ascii_font: str = "Times New Roman",
+) -> None:
+    toc_count = int(document.TablesOfContents.Count)
+    if toc_count == 0:
+        result.append(
+            {
+                "action": "normalize_contents_fonts",
+                "result": "not_found",
+                "note": "No table of contents found.",
+            }
+        )
+        return
+
+    chinese_hits = 0
+    western_hits = 0
+    for toc_index in range(1, toc_count + 1):
+        toc = document.TablesOfContents(toc_index)
+        for char_index in range(1, toc.Range.Characters.Count + 1):
+            char_range = toc.Range.Characters(char_index)
+            char_text = str(char_range.Text)
+            if char_text in {"\r", "\x07", "\t", " "}:
+                continue
+            if re.search(r"[\u4e00-\u9fff]", char_text):
+                char_range.Font.NameFarEast = far_east_font
+                chinese_hits += 1
+            elif re.search(r"[A-Za-z0-9.]", char_text):
+                char_range.Font.NameAscii = ascii_font
+                char_range.Font.NameOther = ascii_font
+                char_range.Font.NameBi = ascii_font
+                char_range.Font.Name = ascii_font
+                western_hits += 1
+    result.append(
+        {
+            "action": "normalize_contents_fonts",
+            "result": "applied",
+            "scope": "toc_only",
+            "chinese_chars_updated": chinese_hits,
+            "western_chars_updated": western_hits,
+            "far_east_font": far_east_font,
+            "ascii_font": ascii_font,
+        }
+    )
+
+
+def finalize_contents(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    refresh_contents(
+        document,
+        result,
+        cleanup_special_entries=False,
+        mode=str(operation.get("mode", "full")),
+        update_fields=bool(operation.get("update_fields", True)),
+    )
+    cleanup_contents_entries(document, result)
+    normalize_contents_fonts(
+        document,
+        result,
+        far_east_font=str(operation.get("far_east_font", "宋体")),
+        ascii_font=str(operation.get("ascii_font", "Times New Roman")),
+    )
+    result.append(
+        {
+            "action": "finalize_contents",
+            "result": "applied",
+            "sequence": [
+                "refresh_contents",
+                "cleanup_contents_entries",
+                "normalize_contents_fonts",
+            ],
+        }
+    )
 
 
 def set_track_revisions(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
@@ -579,6 +691,7 @@ def apply_operations(
                 results,
                 cleanup_special_entries=bool(operation.get("cleanup_special_entries", False)),
                 mode=str(operation.get("mode", "full")),
+                update_fields=bool(operation.get("update_fields", False)),
             )
         elif action == "set_track_revisions":
             set_track_revisions(document, operation, results)
@@ -588,6 +701,15 @@ def apply_operations(
             delete_all_comments(document, results)
         elif action == "cleanup_contents_entries":
             cleanup_contents_entries(document, results)
+        elif action == "normalize_contents_fonts":
+            normalize_contents_fonts(
+                document,
+                results,
+                far_east_font=str(operation.get("far_east_font", "宋体")),
+                ascii_font=str(operation.get("ascii_font", "Times New Roman")),
+            )
+        elif action == "finalize_contents":
+            finalize_contents(document, operation, results)
         elif action == "normalize_tail_section_fonts":
             normalize_tail_section_fonts(document, operation, results)
         else:

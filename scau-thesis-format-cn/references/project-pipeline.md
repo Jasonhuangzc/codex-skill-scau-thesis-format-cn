@@ -27,6 +27,11 @@ The runner now officially supports these safe scopes:
 - If the working copy lacks figure or table donor paragraphs, the runner passes `--official-template-docx` through to the block inserters as fallback donor source.
 - Figure manifest generation prefers chapter-text anchors such as `如图3-1所示` over a broad `图3-1` regex.
 - The runner can route only the figure step through Word COM by passing `--figure-backend word-com`.
+- On Windows, the runner now ends with a TOC finalization pass:
+  - update fields
+  - clean TOC `参考文献` / `致谢` entries
+  - normalize TOC Chinese characters to `宋体`
+  - normalize TOC English, digits, and `.` to `Times New Roman`
 
 ## Recommended pattern
 

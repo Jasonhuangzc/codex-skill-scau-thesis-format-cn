@@ -27,6 +27,26 @@ function Remove-StaleWinWord {
         }
 }
 
+function Resolve-PythonRunner {
+    $python = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($python) {
+        return @{
+            FilePath = $python.Source
+            PrefixArgs = @()
+        }
+    }
+
+    $py = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($py) {
+        return @{
+            FilePath = $py.Source
+            PrefixArgs = @("-3")
+        }
+    }
+
+    throw "Python 3 executable not found. Install Python and make sure python.exe or py.exe is on PATH."
+}
+
 function Invoke-FinalizeWorker {
     param(
         [string]$ResolvedDocx,
@@ -34,31 +54,55 @@ function Invoke-FinalizeWorker {
         [bool]$ShouldAcceptRevisions,
         [string]$WorkerLogPath
     )
-
-    Copy-Item -LiteralPath $ResolvedDocx -Destination $ResolvedOutput -Force
-
-    $word = $null
-    $document = $null
     try {
-        $word = New-Object -ComObject Word.Application
-        $word.Visible = $false
-        $word.DisplayAlerts = 0
-        $document = $word.Documents.Open($ResolvedOutput)
-
-        foreach ($toc in $document.TablesOfContents) {
-            $toc.Update()
+        $scriptDir = Split-Path -Parent $PSCommandPath
+        $batchScript = Join-Path $scriptDir "batch_word_ops.py"
+        if (-not (Test-Path -LiteralPath $batchScript)) {
+            throw "batch_word_ops.py not found beside finalize_submission_copy.ps1"
         }
-        $document.Fields.Update() | Out-Null
 
+        $pythonRunner = Resolve-PythonRunner
+        $plan = @()
         if ($ShouldAcceptRevisions) {
-            $document.AcceptAllRevisions()
+            $plan += @{ action = "accept_all_revisions" }
+        }
+        $plan += @(
+            @{ action = "delete_all_comments" },
+            @{
+                action = "finalize_contents"
+                mode = "full"
+                update_fields = $true
+                ascii_font = "Times New Roman"
+            }
+        )
+
+        $planPath = Join-Path ([System.IO.Path]::GetTempPath()) ("word-finalize-plan-" + [guid]::NewGuid().ToString() + ".json")
+        $tempOutput = Join-Path ([System.IO.Path]::GetTempPath()) ("word-finalize-output-" + [guid]::NewGuid().ToString() + ".docx")
+        $plan | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $planPath -Encoding UTF8
+
+        $argumentList = @()
+        $argumentList += $pythonRunner.PrefixArgs
+        $argumentList += @(
+            $batchScript,
+            $ResolvedDocx,
+            $planPath,
+            "--output",
+            $tempOutput
+        )
+
+        $pythonResult = & $pythonRunner.FilePath @argumentList 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $message = @(
+                "batch_word_ops failed",
+                ($pythonResult | Out-String)
+            ) -join [Environment]::NewLine
+            throw $message.Trim()
+        }
+        if (-not (Test-Path -LiteralPath $tempOutput)) {
+            throw "batch_word_ops completed without creating the finalized output file."
         }
 
-        for ($i = $document.Comments.Count; $i -ge 1; $i--) {
-            $document.Comments.Item($i).Delete()
-        }
-
-        $document.Save()
+        Move-Item -LiteralPath $tempOutput -Destination $ResolvedOutput -Force
         Write-Output $ResolvedOutput
         exit 0
     }
@@ -77,20 +121,12 @@ function Invoke-FinalizeWorker {
         exit 1
     }
     finally {
-        if ($document -ne $null) {
-            $document.Close([ref]$false)
+        if ($planPath -and (Test-Path -LiteralPath $planPath)) {
+            Remove-Item -LiteralPath $planPath -Force -ErrorAction SilentlyContinue
         }
-        if ($word -ne $null) {
-            $word.Quit()
+        if ($tempOutput -and (Test-Path -LiteralPath $tempOutput)) {
+            Remove-Item -LiteralPath $tempOutput -Force -ErrorAction SilentlyContinue
         }
-        if ($document -ne $null) {
-            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($document)
-        }
-        if ($word -ne $null) {
-            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($word)
-        }
-        [GC]::Collect()
-        [GC]::WaitForPendingFinalizers()
     }
 }
 

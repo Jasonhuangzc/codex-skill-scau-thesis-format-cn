@@ -12,6 +12,7 @@ Use this note when the user is on Windows, has local Microsoft Word, and the the
 - adding page breaks before headings
 - refreshing contents after edits
 - cleaning `参考文献` and `致谢` TOC entries after refresh
+- normalizing TOC Chinese chars to `宋体` and English / digits / `.` to `Times New Roman`
 - restoring `参考文献` and `致谢` title/body fonts after content edits
 - performing a sequence of small format repairs on a large file
 
@@ -52,6 +53,8 @@ Use small JSON plans and run them in separate invocations:
 3. Format cleanup stage:
    - `refresh_contents` with `mode: "page_numbers_only"` when headings did not change
    - `cleanup_contents_entries`
+   - `normalize_contents_fonts`
+   - or one precise `finalize_contents` pass when the TOC needs the full final sequence
    - `normalize_tail_section_fonts`
 
 For long files, pass `--log-jsonl <path>` to record per-operation start/finish events and locate the exact stuck action.

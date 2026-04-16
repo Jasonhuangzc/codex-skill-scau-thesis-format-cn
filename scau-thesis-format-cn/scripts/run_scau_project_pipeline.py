@@ -100,6 +100,7 @@ def run_step(step_name: str, command: list[str], cwd: Path) -> str:
             "tables": "检查表格 manifest、Markdown 表格文件和表题格式是否符合 `# 表x-x ...`。",
             "figures": "检查锚点 regex、图片文件路径，以及是否应传入 --official-template-docx 作为 donor fallback。",
             "references": "检查参考文献源文件格式，确认 `## 中文文献` / `## 英文文献` 结构完整。",
+            "contents-finalize": "检查本机是否为 Windows + Word + pywin32 环境，以及目录域是否能正常更新。",
         }
         raise SkillStepError(
             json.dumps(
@@ -334,6 +335,7 @@ def main() -> None:
         "insert_figure_blocks_com.py" if args.figure_backend == "word-com" else "insert_figure_blocks.py"
     )
     insert_refs = ensure_sibling_script("insert_reference_batch.py")
+    batch_ops = ensure_sibling_script("batch_word_ops.py")
 
     current_docx = docx_path
     temp_dir = Path(tempfile.mkdtemp(prefix="thesis-word-pipeline-"))
@@ -456,6 +458,39 @@ def main() -> None:
         current_docx = strip_template_body_placeholders(current_docx, chapter_heading, stripped_docx)
 
     final_output.write_bytes(current_docx.read_bytes())
+    contents_finalized = False
+    if sys.platform == "win32":
+        finalize_plan = temp_dir / "finalize_contents_plan.json"
+        finalized_docx = temp_dir / "contents_finalized.docx"
+        finalize_plan.write_text(
+            json.dumps(
+                [
+                    {
+                        "action": "finalize_contents",
+                        "mode": "full",
+                        "update_fields": True,
+                    }
+                ],
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        run_step(
+            "contents-finalize",
+            [
+                sys.executable,
+                str(batch_ops),
+                str(final_output),
+                str(finalize_plan),
+                "--output",
+                str(finalized_docx),
+            ],
+            project_root,
+        )
+        final_output.write_bytes(finalized_docx.read_bytes())
+        contents_finalized = True
+
     emit_text(
         json.dumps(
             {
@@ -470,6 +505,7 @@ def main() -> None:
                 "references_inserted": not args.skip_references,
                 "figure_generators_rerun": not args.skip_generate_figures and not args.skip_figures,
                 "chapter_heading": chapter_heading,
+                "contents_finalized": contents_finalized,
             },
             ensure_ascii=False,
             indent=2,

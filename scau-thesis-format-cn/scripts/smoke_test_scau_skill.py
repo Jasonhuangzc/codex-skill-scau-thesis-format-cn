@@ -99,7 +99,7 @@ def run_plain(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]
     return result
 
 
-def write_generic_workspace(workspace: Path) -> tuple[Path, Path]:
+def write_generic_workspace(workspace: Path) -> tuple[Path, Path, Path]:
     drafts_dir = workspace / "drafts"
     drafts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -138,7 +138,21 @@ def write_generic_workspace(workspace: Path) -> tuple[Path, Path]:
 """
     chapter_path = drafts_dir / "chapter1.md"
     chapter_path.write_text(chapter_text, encoding="utf-8")
-    return metadata_path, chapter_path
+    references_text = """# 最终参考文献著录初稿
+
+## 中文文献
+
+杨三. 模板化终稿审查流程研究[D]. 广州: 测试大学, 2025.
+李四. 学位论文装版自动化方法[J]. 测试学报, 2023, 10(2): 12-18.
+
+## 英文文献
+
+Zhang X, Miller T. Audit workflow for thesis formatting[J]. Journal of Test Systems, 2024, 8(1): 10-18.
+Brown A, Smith J. Template-guided Word repair for final theses[J]. Document Engineering Review, 2022, 5(3): 44-53.
+"""
+    references_path = drafts_dir / "references_final.md"
+    references_path.write_text(references_text, encoding="utf-8")
+    return metadata_path, chapter_path, references_path
 
 
 def scan_project_specific_residue(tokens: list[str]) -> list[dict[str, str]]:
@@ -177,14 +191,19 @@ def main() -> int:
     workspace.mkdir(parents=True, exist_ok=True)
 
     try:
-        metadata_path, chapter_path = write_generic_workspace(workspace)
+        metadata_path, chapter_path, references_path = write_generic_workspace(workspace)
         work_output_dir = workspace / "_scau_thesis_output"
         working_docx = work_output_dir / "scau_thesis_working.docx"
         chapter_docx = work_output_dir / "chapter_inserted.docx"
         replaced_docx = work_output_dir / "chapter_replaced.docx"
+        finalized_docx = work_output_dir / "chapter_finalized.docx"
+        refs_docx = work_output_dir / "chapter_refs.docx"
         replace_plan = work_output_dir / "replace_plan.json"
+        finalize_plan = work_output_dir / "finalize_plan.json"
         frontmatter_signatures = work_output_dir / "frontmatter_signatures.json"
         replaced_signatures = work_output_dir / "chapter_replaced_signatures.json"
+        finalized_signatures = work_output_dir / "chapter_finalized_signatures.json"
+        reference_order_report = work_output_dir / "reference_order.json"
 
         comment_payload = run_json(
             [sys.executable, str(SCRIPT_DIR / "extract_docx_comments.py"), str(TEMPLATE_DOCX)],
@@ -239,13 +258,61 @@ def main() -> int:
             ],
             SKILL_ROOT,
         )
+        finalize_plan.write_text(
+            json.dumps(
+                [
+                    {
+                        "action": "finalize_contents",
+                        "mode": "full",
+                        "update_fields": True,
+                    }
+                ],
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        run_json(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "batch_word_ops.py"),
+                str(replaced_docx),
+                str(finalize_plan),
+                "--output",
+                str(finalized_docx),
+            ],
+            SKILL_ROOT,
+        )
         run_plain(
             [sys.executable, str(SCRIPT_DIR / "inspect_word_format_signatures.py"), str(replaced_docx), "--output", str(replaced_signatures)],
+            SKILL_ROOT,
+        )
+        run_plain(
+            [sys.executable, str(SCRIPT_DIR / "inspect_word_format_signatures.py"), str(finalized_docx), "--output", str(finalized_signatures)],
+            SKILL_ROOT,
+        )
+        run_json(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "insert_reference_batch.py"),
+                "--docx",
+                str(chapter_docx),
+                "--references-file",
+                str(references_path),
+                "--output",
+                str(refs_docx),
+            ],
+            SKILL_ROOT,
+        )
+        run_plain(
+            [sys.executable, str(SCRIPT_DIR / "inspect_reference_order.py"), "--docx", str(refs_docx), "--output", str(reference_order_report)],
             SKILL_ROOT,
         )
 
         frontmatter_checks = read_json(frontmatter_signatures).get("checks", {})
         replaced_checks = read_json(replaced_signatures).get("checks", {})
+        finalized_checks = read_json(finalized_signatures).get("checks", {})
+        reference_order_checks = read_json(reference_order_report)
 
         required_frontmatter = {
             "english_title_format": "confirmed",
@@ -255,6 +322,11 @@ def main() -> int:
         }
         required_replaced = {
             "body_sample_font": "confirmed",
+            "references_contents_entry_spacing": "confirmed",
+            "acknowledgements_contents_entry_spacing": "confirmed",
+        }
+        required_finalized = {
+            "contents_font_pairing": "confirmed",
             "references_contents_entry_spacing": "confirmed",
             "acknowledgements_contents_entry_spacing": "confirmed",
         }
@@ -305,6 +377,22 @@ def main() -> int:
                     for key, expected in required_replaced.items()
                 },
             },
+            "contents_finalize": {
+                "finalized_docx": str(finalized_docx),
+                "checks": {
+                    key: {
+                        "expected": expected,
+                        "observed": ((finalized_checks.get(key) or {}).get("status")),
+                    }
+                    for key, expected in required_finalized.items()
+                },
+            },
+            "reference_sorting": {
+                "refs_docx": str(refs_docx),
+                "status": reference_order_checks.get("status"),
+                "entry_count": reference_order_checks.get("entry_count"),
+                "issue_count": len(reference_order_checks.get("issues", [])),
+            },
         }
 
         overall_pass = (
@@ -314,6 +402,8 @@ def main() -> int:
             and replaced_count == 1
             and all(item["observed"] == item["expected"] for item in report["frontmatter_fill"]["checks"].values())
             and all(item["observed"] == item["expected"] for item in report["small_replace"]["checks"].values())
+            and all(item["observed"] == item["expected"] for item in report["contents_finalize"]["checks"].values())
+            and report["reference_sorting"]["status"] == "confirmed"
         )
         report["overall_status"] = "pass" if overall_pass else "fail"
 

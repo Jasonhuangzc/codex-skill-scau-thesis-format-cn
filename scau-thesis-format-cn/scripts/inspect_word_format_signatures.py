@@ -9,7 +9,15 @@ import re
 import sys
 from pathlib import Path
 
+from reference_order_utils import inspect_reference_sequence
+
 WD_LINE_SPACE_1PT5 = 1
+FONT_ALIASES = {
+    "宋体": ("宋体", "SimSun"),
+    "黑体": ("黑体", "SimHei"),
+    "楷体": ("楷体", "KaiTi"),
+    "Times New Roman": ("Times New Roman",),
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -303,7 +311,9 @@ def leading_label_signature_fast(paragraph, label: str, visible_limit: int = 120
 def contains_font(segment: dict[str, object] | None, expected: str, key: str) -> bool:
     if not segment:
         return False
-    return expected.lower() in str(segment.get(key, "")).lower()
+    observed = str(segment.get(key, "")).lower()
+    candidates = FONT_ALIASES.get(expected, (expected,))
+    return any(candidate.lower() in observed for candidate in candidates)
 
 
 def compact_spaces(text: str) -> str:
@@ -623,20 +633,24 @@ def repeated_punctuation_check(
     toc_end: int,
     references_title_item: dict[str, object] | None,
 ) -> dict[str, object]:
-    expected_note = "正文应避免重复标点，如“。。”或“，，”。"
+    expected_note = "正文应避免重复标点，如“。。”、“，，”、“；；”、“：：”或明显重复的半角句点、逗号。"
     body_end = int(references_title_item["paragraph"].Range.Start) if references_title_item else float("inf")
+    duplicate_patterns = [
+        ("double_cn_period", "。。"),
+        ("double_cn_comma", "，，"),
+        ("double_cn_semicolon", "；；"),
+        ("double_cn_colon", "：："),
+        ("double_ascii_period", ".."),
+        ("double_ascii_comma", ",,"),
+    ]
     hits: list[dict[str, object]] = []
     for item in paragraphs:
         start = int(item["paragraph"].Range.Start)
         if start <= toc_end or start >= body_end:
             continue
         text = str(item["text"])
-        if "。。" in text or "，，" in text:
-            hit_types = []
-            if "。。" in text:
-                hit_types.append("double_cn_period")
-            if "，，" in text:
-                hit_types.append("double_cn_comma")
+        hit_types = [label for label, token in duplicate_patterns if token in text]
+        if hit_types:
             hits.append(
                 {
                     "paragraph_index": item["index"],
@@ -666,6 +680,8 @@ def body_line_spacing_check(
         start = int(item["paragraph"].Range.Start)
         if start <= toc_end or start >= body_end:
             continue
+        if int(item["paragraph"].Range.Tables.Count) > 0:
+            continue
         text = str(item["text"]).strip()
         if not text:
             continue
@@ -691,6 +707,50 @@ def body_line_spacing_check(
         "mismatch_count": len(mismatches),
         "mismatches": mismatches[:30],
     }
+
+
+def reference_order_check(
+    paragraphs: list[dict[str, object]],
+    *,
+    references_title_item: dict[str, object] | None,
+    acknowledgements_title_item: dict[str, object] | None,
+) -> dict[str, object]:
+    if references_title_item is None:
+        return {
+            "status": "manual_confirm",
+            "expected": "参考文献应先列中文，再列西文/俄文；中文按第一著者姓氏汉语拼音字母顺序，西文和俄文按第一著者姓氏字母顺序。",
+            "note": "未定位到参考文献标题。",
+        }
+
+    start_position = int(references_title_item["paragraph"].Range.Start)
+    end_position = (
+        int(acknowledgements_title_item["paragraph"].Range.Start)
+        if acknowledgements_title_item is not None
+        else float("inf")
+    )
+    entries: list[str] = []
+    entry_positions: list[int] = []
+    for item in paragraphs:
+        position = int(item["paragraph"].Range.Start)
+        if position <= start_position or position >= end_position:
+            continue
+        text = str(item["text"]).strip()
+        if not text:
+            continue
+        if re.match(r"^附录\s*[A-ZＡ-Ｚ]", text):
+            break
+        if re.match(r"^\d+(?:\.\d+){0,3}\s+", text):
+            break
+        entries.append(text)
+        entry_positions.append(item["index"])
+
+    report = inspect_reference_sequence(entries)
+    if report.get("issues"):
+        for issue in report["issues"]:  # type: ignore[index]
+            issue_index = issue.get("index")
+            if isinstance(issue_index, int) and 0 <= issue_index < len(entry_positions):
+                issue["paragraph_index"] = entry_positions[issue_index]
+    return report
 
 
 def inspect_document(input_path: Path) -> dict[str, object]:
@@ -757,6 +817,11 @@ def inspect_document(input_path: Path) -> dict[str, object]:
             paragraphs,
             toc_end=toc_end,
             references_title_item=references_title_item,
+        )
+        reference_order = reference_order_check(
+            paragraphs,
+            references_title_item=references_title_item,
+            acknowledgements_title_item=acknowledgements_title_item,
         )
 
         report = {
@@ -831,6 +896,7 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                 "contents_font_pairing": toc_font,
                 "body_repeated_punctuation": repeated_punctuation,
                 "body_line_spacing_1p5": body_spacing,
+                "reference_ordering": reference_order,
                 **toc_checks,
             },
             "guardrails": [

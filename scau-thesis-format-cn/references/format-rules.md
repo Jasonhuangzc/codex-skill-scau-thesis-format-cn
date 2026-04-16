@@ -42,7 +42,6 @@ These rules are explicit in the 2024 `附件1-5`.
 - For the same author in the same year, distinguish entries with `a`, `b`, `c`.
 - For one location citing multiple sources:
   - list Chinese first, then foreign-language references
-  - sort each language block by year ascending
   - separate items with semicolons
 - Inside citation parentheses, punctuation uses half-width English symbols.
 - After commas and semicolons inside citation parentheses, keep one half-width space.
@@ -52,12 +51,10 @@ These rules are explicit in the 2024 `附件1-5`.
 
 - List only sources actually cited in the正文.
 - Do not number bibliography entries.
-- Group by language in this order:
+- Group by language in this order for this skill:
   - Chinese
-  - Japanese
-  - Western languages
-  - Russian
-  - other languages
+  - western-language and Russian entries as the foreign-language block
+  - if another foreign-language block appears, treat it as part of the foreign-language block unless the school later publishes a stricter sub-order rule
 - Chinese entries are sorted by the first author's pinyin surname.
 - Western-language entries are sorted by the first author's surname.
 - Chinese bibliography text uses `宋体` small-four.
@@ -175,10 +172,12 @@ These come from explicit comments in the 2024 `附件6` and should be treated as
   - English author and affiliation are not explicitly marked as bold in the template comment
 - `目录`:
   - update the table of contents after heading edits
+  - the final TOC pass is: update fields -> clean the TOC `参考文献` / `致谢` entries -> normalize TOC fonts
   - after each TOC update, re-check and clean the `参考文献` and `致谢` entries so they do not keep the heading-line character spacing
   - show contents down to level 3
   - keep left-aligned entries, right-aligned page numbers, and leader dots
   - `参考文献` and `致谢` in the contents do not insert character spacing
+  - TOC Chinese characters use `宋体`; English, digits, and `.` use `Times New Roman`
 - `目录标题`:
   - the title itself uses `目        录`
 - `参考文献` title:
@@ -249,14 +248,24 @@ When the user provides a Word file for final review, prioritize these checks in 
    - abstract and keyword labels
    - appendix and acknowledgement labels
 3. Bibliography and citation checks
-   - author-year format in the body
-   - entry completeness and punctuation
-   - Chinese versus English entry style differences
+  - author-year format in the body
+  - entry completeness and punctuation
+  - Chinese versus English entry style differences
+  - bibliography ordering:
+    - Chinese references first
+    - western-language and Russian references after Chinese
+    - Chinese entries sorted by the first author's surname in Hanyu Pinyin order
+    - western-language and Russian entries sorted by the first author's surname in alphabetical order
 4. Terminology and mixed-language consistency
-   - abbreviations
-   - species names
-   - concentration and unit formats
-   - repeated English term variants
+  - abbreviations
+  - species names
+  - concentration and unit formats
+  - repeated English term variants
+5. High-visibility cleanup checks
+   - TOC `参考文献` / `致谢` entry spacing
+   - TOC Chinese-vs-western font pairing
+   - repeated punctuation such as `。。` and `，，`
+   - body paragraph `1.5` line spacing, excluding table-cell paragraphs
 
 If the rendered file has not been inspected, do not mark the thesis as fully compliant.
 
