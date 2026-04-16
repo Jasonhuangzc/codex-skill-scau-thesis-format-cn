@@ -49,14 +49,9 @@ Use small JSON plans and run them in separate invocations:
    - `accept_all_revisions`
 2. Main replacement stage:
    - one or more `replace_text` actions
-   - optional `normalize_ascii_digit_font` for western letters/digits font cleanup
-     - recommended wildcard: `[A-Za-z0-9.]@`
-     - this includes period `.` so decimal numbers and abbreviations are covered
 3. Format cleanup stage:
-   - prefer one-shot `finalize_contents` for TOC finalization:
-     - `refresh_contents`
-     - `cleanup_contents_entries` for TOC `参考文献` / `致谢` de-spacing
-     - `normalize_contents_fonts` (TOC-only: Chinese `宋体`, English/digits/`.` `Times New Roman`)
+   - `refresh_contents` with `mode: "page_numbers_only"` when headings did not change
+   - `cleanup_contents_entries`
    - `normalize_tail_section_fonts`
 
 For long files, pass `--log-jsonl <path>` to record per-operation start/finish events and locate the exact stuck action.

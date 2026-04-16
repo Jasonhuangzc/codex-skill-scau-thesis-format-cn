@@ -238,79 +238,6 @@ def refresh_contents(
         cleanup_contents_entries(document, result)
 
 
-def normalize_contents_fonts(
-    document,
-    operation: dict[str, object],
-    result: list[dict[str, object]],
-) -> None:
-    if int(document.TablesOfContents.Count) == 0:
-        result.append(
-            {
-                "action": "normalize_contents_fonts",
-                "result": "not_found",
-                "note": "未检测到目录域。",
-            }
-        )
-        return
-
-    far_east_font = str(operation.get("far_east_font", "宋体"))
-    ascii_font = str(operation.get("ascii_font", "Times New Roman"))
-    size = operation.get("size")
-    western_char_re = re.compile(str(operation.get("western_char_pattern", r"[A-Za-z0-9.]")))
-    updated_characters = 0
-
-    for toc_index in range(1, document.TablesOfContents.Count + 1):
-        toc = document.TablesOfContents(toc_index)
-        toc_range = toc.Range
-        for char_index in range(1, toc_range.Characters.Count + 1):
-            char_range = toc_range.Characters(char_index)
-            char_text = char_range.Text
-            if char_text in {"\r", "\x07", "\t"}:
-                continue
-            font = char_range.Font
-            if western_char_re.match(char_text):
-                font.NameAscii = ascii_font
-                font.NameOther = ascii_font
-                font.NameBi = ascii_font
-                font.Name = ascii_font
-            else:
-                font.NameFarEast = far_east_font
-            if isinstance(size, (int, float)):
-                font.Size = float(size)
-            updated_characters += 1
-
-    result.append(
-        {
-            "action": "normalize_contents_fonts",
-            "result": "applied",
-            "far_east_font": far_east_font,
-            "ascii_font": ascii_font,
-            "western_char_pattern": western_char_re.pattern,
-            "updated_characters": updated_characters,
-        }
-    )
-
-
-def finalize_contents(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
-    refresh_mode = str(operation.get("mode", "full"))
-    refresh_contents(
-        document,
-        result,
-        cleanup_special_entries=False,
-        mode=refresh_mode,
-    )
-    cleanup_contents_entries(document, result)
-    normalize_contents_fonts(document, operation, result)
-    result.append(
-        {
-            "action": "finalize_contents",
-            "result": "applied",
-            "mode": refresh_mode,
-            "sequence": ["refresh_contents", "cleanup_contents_entries", "normalize_contents_fonts"],
-        }
-    )
-
-
 def set_track_revisions(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
     enabled = bool(operation.get("enabled", False))
     document.TrackRevisions = -1 if enabled else 0
@@ -653,10 +580,6 @@ def apply_operations(
                 cleanup_special_entries=bool(operation.get("cleanup_special_entries", False)),
                 mode=str(operation.get("mode", "full")),
             )
-        elif action == "normalize_contents_fonts":
-            normalize_contents_fonts(document, operation, results)
-        elif action == "finalize_contents":
-            finalize_contents(document, operation, results)
         elif action == "set_track_revisions":
             set_track_revisions(document, operation, results)
         elif action == "accept_all_revisions":
