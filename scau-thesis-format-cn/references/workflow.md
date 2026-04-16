@@ -129,6 +129,13 @@ Use rendered output for these checks:
 - chapter heading pagination
 - directory refresh status
 
+Use Word-structure checks for these high-risk TOC/body items:
+
+- TOC `参考文献` / `致谢` entry spacing should be de-spaced in TOC only
+- TOC font pairing: Chinese `宋体`, English/digits/`.` `Times New Roman`
+- body repeated punctuation regression such as `。。` / `，，`
+- body line spacing remains 1.5
+
 Use `scripts/export_word_preview.ps1` to export PDF preview. Then inspect visually or use the `doc` skill if available.
 
 ## 7. Final pass checklist

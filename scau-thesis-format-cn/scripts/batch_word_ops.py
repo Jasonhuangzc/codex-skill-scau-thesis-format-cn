@@ -467,6 +467,49 @@ def replace_text(document, operation: dict[str, object], result: list[dict[str, 
     )
 
 
+def normalize_ascii_digit_font(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    wildcard_pattern = str(operation.get("wildcard_pattern", "[A-Za-z0-9.]@"))
+    ascii_font = str(operation.get("ascii_font", "Times New Roman"))
+    far_east_font = operation.get("far_east_font")
+    size = operation.get("size")
+    if not wildcard_pattern.strip():
+        raise ValueError("`wildcard_pattern` cannot be empty for normalize_ascii_digit_font.")
+
+    normalized_count = 0
+    search_start = document.Content.Start
+    while search_start <= document.Content.End:
+        rng = document.Range(search_start, document.Content.End)
+        finder = rng.Find
+        finder.ClearFormatting()
+        finder.Text = wildcard_pattern
+        finder.Forward = True
+        finder.Wrap = WD_FIND_STOP
+        finder.MatchWildcards = True
+        if not finder.Execute():
+            break
+
+        rng.Font.NameAscii = ascii_font
+        rng.Font.NameOther = ascii_font
+        rng.Font.NameBi = ascii_font
+        rng.Font.Name = ascii_font
+        if isinstance(far_east_font, str) and far_east_font:
+            rng.Font.NameFarEast = far_east_font
+        if isinstance(size, (int, float)):
+            rng.Font.Size = float(size)
+        normalized_count += 1
+        search_start = rng.End
+
+    result.append(
+        {
+            "action": "normalize_ascii_digit_font",
+            "wildcard_pattern": wildcard_pattern,
+            "ascii_font": ascii_font,
+            "result": "applied" if normalized_count else "not_found",
+            "normalized_count": normalized_count,
+        }
+    )
+
+
 def insert_text_after(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
     rng = get_anchor_range(document, operation)
     rng.Collapse(WD_COLLAPSE_END)
@@ -522,6 +565,8 @@ def apply_operations(
         )
         if action == "replace_text":
             replace_text(document, operation, results)
+        elif action == "normalize_ascii_digit_font":
+            normalize_ascii_digit_font(document, operation, results)
         elif action == "insert_text_after":
             insert_text_after(document, operation, results)
         elif action == "insert_page_break_before":

@@ -9,6 +9,8 @@ import re
 import sys
 from pathlib import Path
 
+WD_LINE_SPACE_1PT5 = 1
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -558,6 +560,139 @@ def toc_special_entry_checks(document) -> dict[str, dict[str, object]]:
     return checks
 
 
+def toc_font_check(document) -> dict[str, object]:
+    expected_note = "目录中文字符应为宋体；英文、数字和小数点应为 Times New Roman。"
+    if int(document.TablesOfContents.Count) == 0:
+        return {
+            "status": "manual_confirm",
+            "expected": expected_note,
+            "note": "未检测到目录域。",
+        }
+
+    toc = document.TablesOfContents(1)
+    chinese_hits = 0
+    chinese_bad: list[dict[str, object]] = []
+    western_hits = 0
+    western_bad: list[dict[str, object]] = []
+    for index in range(1, toc.Range.Characters.Count + 1):
+        char_range = toc.Range.Characters(index)
+        char_text = char_range.Text
+        if char_text in {"\r", "\x07", "\t", " "}:
+            continue
+        signature = char_signature(char_range)
+        if re.search(r"[\u4e00-\u9fff]", char_text):
+            chinese_hits += 1
+            if not contains_font(signature, "宋体", "far_east_font"):
+                chinese_bad.append(
+                    {
+                        "char": char_text,
+                        "ascii_font": signature.get("ascii_font"),
+                        "far_east_font": signature.get("far_east_font"),
+                    }
+                )
+        elif re.search(r"[A-Za-z0-9.]", char_text):
+            western_hits += 1
+            if not contains_font(signature, "Times New Roman", "ascii_font"):
+                western_bad.append(
+                    {
+                        "char": char_text,
+                        "ascii_font": signature.get("ascii_font"),
+                        "far_east_font": signature.get("far_east_font"),
+                    }
+                )
+    checks = [
+        chinese_hits > 0 and not chinese_bad,
+        western_hits > 0 and not western_bad,
+    ]
+    status = "confirmed" if all(checks) else "suggested"
+    return {
+        "status": status,
+        "expected": expected_note,
+        "observed": {
+            "chinese_chars_checked": chinese_hits,
+            "western_chars_checked": western_hits,
+            "chinese_font_mismatch_samples": chinese_bad[:12],
+            "western_font_mismatch_samples": western_bad[:12],
+        },
+    }
+
+
+def repeated_punctuation_check(
+    paragraphs: list[dict[str, object]],
+    *,
+    toc_end: int,
+    references_title_item: dict[str, object] | None,
+) -> dict[str, object]:
+    expected_note = "正文应避免重复标点，如“。。”或“，，”。"
+    body_end = int(references_title_item["paragraph"].Range.Start) if references_title_item else float("inf")
+    hits: list[dict[str, object]] = []
+    for item in paragraphs:
+        start = int(item["paragraph"].Range.Start)
+        if start <= toc_end or start >= body_end:
+            continue
+        text = str(item["text"])
+        if "。。" in text or "，，" in text:
+            hit_types = []
+            if "。。" in text:
+                hit_types.append("double_cn_period")
+            if "，，" in text:
+                hit_types.append("double_cn_comma")
+            hits.append(
+                {
+                    "paragraph_index": item["index"],
+                    "text": text,
+                    "types": hit_types,
+                }
+            )
+    return {
+        "status": "confirmed" if not hits else "suggested",
+        "expected": expected_note,
+        "issue_count": len(hits),
+        "issues": hits[:30],
+    }
+
+
+def body_line_spacing_check(
+    paragraphs: list[dict[str, object]],
+    *,
+    toc_end: int,
+    references_title_item: dict[str, object] | None,
+) -> dict[str, object]:
+    expected_note = "正文段落行距应为 1.5 倍（Word LineSpacingRule = 1）。"
+    body_end = int(references_title_item["paragraph"].Range.Start) if references_title_item else float("inf")
+    checked = 0
+    mismatches: list[dict[str, object]] = []
+    for item in paragraphs:
+        start = int(item["paragraph"].Range.Start)
+        if start <= toc_end or start >= body_end:
+            continue
+        text = str(item["text"]).strip()
+        if not text:
+            continue
+        if re.match(r"^\d+(?:\.\d+){0,3}\s+", text):
+            continue
+        if re.match(r"^(图|表|续表|注[:：]|（式)", text):
+            continue
+        signature = paragraph_format_signature(item["paragraph"])
+        checked += 1
+        if int(signature.get("line_spacing_rule") or -1) != WD_LINE_SPACE_1PT5:
+            mismatches.append(
+                {
+                    "paragraph_index": item["index"],
+                    "text": text,
+                    "line_spacing_rule": signature.get("line_spacing_rule"),
+                    "line_spacing": signature.get("line_spacing"),
+                }
+            )
+    return {
+        "status": "confirmed" if checked > 0 and not mismatches else "suggested",
+        "expected": expected_note,
+        "paragraphs_checked": checked,
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches[:30],
+    }
+
+
 def inspect_document(input_path: Path) -> dict[str, object]:
     try:
         import pythoncom
@@ -612,6 +747,17 @@ def inspect_document(input_path: Path) -> dict[str, object]:
         reference_body_item = next_nonempty_after(paragraphs, references_title_item)
         acknowledgement_body_item = next_nonempty_after(paragraphs, acknowledgements_title_item)
         toc_checks = toc_special_entry_checks(document)
+        toc_font = toc_font_check(document)
+        repeated_punctuation = repeated_punctuation_check(
+            paragraphs,
+            toc_end=toc_end,
+            references_title_item=references_title_item,
+        )
+        body_spacing = body_line_spacing_check(
+            paragraphs,
+            toc_end=toc_end,
+            references_title_item=references_title_item,
+        )
 
         report = {
             "file": str(input_path),
@@ -682,6 +828,9 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                     acknowledgement_body_item,
                     "致谢正文使用中文宋体、西文 Times New Roman、小四号，不作为显式加粗项。",
                 ),
+                "contents_font_pairing": toc_font,
+                "body_repeated_punctuation": repeated_punctuation,
+                "body_line_spacing_1p5": body_spacing,
                 **toc_checks,
             },
             "guardrails": [
@@ -689,6 +838,8 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                 "黑体、楷体这类字体要求本身不等于必须打开 Word 的 Bold 属性。",
                 "正文、参考文献、致谢被修改后，要回看字符级字体和字号，不要只看内容是否正确。",
                 "每次刷新目录后，都要复查目录中的“参考文献”和“致谢”是否被标题空格污染。",
+                "目录字体要单独复查：中文宋体，英文数字和小数点 Times New Roman。",
+                "正文要复查重复标点（如“。。”、“，，”）以及是否维持 1.5 倍行距。",
                 "页面位置、跨页、目录页码等仍需配合渲染页面审查。",
             ],
         }
