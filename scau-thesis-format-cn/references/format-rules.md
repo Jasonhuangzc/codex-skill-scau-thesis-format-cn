@@ -102,6 +102,7 @@ These are format examples from the 2024 `附件6`. Use them as layout evidence w
   - affiliation line in parentheses
   - `Abstract:`
   - `Key words:`
+- The Chinese abstract and the English abstract are separated by an explicit page break in the final Word file.
 - In the English abstract body, commas, periods, colons, and semicolons are followed by one half-width space.
 - The second and later English abstract paragraphs use a two-character first-line indent according to the template comment.
 - The template includes an optional `英文缩略词（符号表）` section.
@@ -134,6 +135,7 @@ These are format examples from the 2024 `附件6`. Use them as layout evidence w
 - Level-4 heading: `楷体 + Times New Roman`, small-four, 1.5-line spacing, left aligned.
 - The heading number and the heading text are separated by one character space.
 - Body text uses `宋体 + Times New Roman`, small-four, first-line indent of two characters, and 1.5-line spacing.
+- For body-paragraph indentation checks, treat `1.8` or similar values as defects; the first-line indent should be exactly `2` characters.
 
 ### 2.3 Figures, tables, formulas
 
@@ -148,6 +150,8 @@ These are format examples from the 2024 `附件6`. Use them as layout evidence w
 - Tables use a three-line-table structure with heavier top and bottom rules and a lighter middle rule.
 - Table body text uses five-point size class and single spacing in the template comment.
 - Table notes use small-five in the template comment.
+- Table-cell paragraphs should stay centered in the final Word file.
+- For the optional `英文缩略词（符号表）` table, restore `宋体 + Times New Roman` small-four, centered paragraphs, and `1.5` line spacing.
 - Figures and their main captions must not be split across pages.
 - Formula blocks are centered, numbered continuously, and their numbers sit at the right end of the line.
 - Footnotes are continuous and use small-five single spacing.
@@ -170,6 +174,7 @@ These come from explicit comments in the 2024 `附件6` and should be treated as
   - the abstract body immediately after `Abstract:` is not
   - English title is explicitly bold
   - English author and affiliation are not explicitly marked as bold in the template comment
+  - the English abstract section starts on a new page through an explicit page break
 - `目录`:
   - update the table of contents after heading edits
   - the final TOC pass is: update fields -> clean the TOC `参考文献` / `致谢` entries -> normalize TOC fonts

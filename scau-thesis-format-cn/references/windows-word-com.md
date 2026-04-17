@@ -14,6 +14,9 @@ Use this note when the user is on Windows, has local Microsoft Word, and the the
 - cleaning `参考文献` and `致谢` TOC entries after refresh
 - normalizing TOC Chinese chars to `宋体` and English / digits / `.` to `Times New Roman`
 - restoring `参考文献` and `致谢` title/body fonts after content edits
+- restoring the explicit page break before the English abstract
+- restoring正文 first-line indent to exactly `2` and line spacing to `1.5`
+- re-centering table-cell paragraphs and normalizing the `英文缩略词（符号表）` table
 - performing a sequence of small format repairs on a large file
 
 ## When to prefer Word COM over python-docx
@@ -51,6 +54,9 @@ Use small JSON plans and run them in separate invocations:
 2. Main replacement stage:
    - one or more `replace_text` actions
 3. Format cleanup stage:
+   - `ensure_page_break_before` for `section: "english_abstract"`
+   - `normalize_body_paragraph_layout`
+   - `normalize_table_cells`
    - `refresh_contents` with `mode: "page_numbers_only"` when headings did not change
    - `cleanup_contents_entries`
    - `normalize_contents_fonts`

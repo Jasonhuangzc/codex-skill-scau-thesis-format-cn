@@ -262,6 +262,45 @@ def main() -> int:
             json.dumps(
                 [
                     {
+                        "action": "ensure_page_break_before",
+                        "section": "english_abstract",
+                    },
+                    {
+                        "action": "normalize_body_paragraph_layout",
+                        "first_line_indent_chars": 2.0,
+                        "left_indent_chars": 0.0,
+                        "line_spacing": 18.0,
+                        "line_spacing_rule": 1,
+                        "alignment": 3,
+                    },
+                    {
+                        "action": "normalize_table_cells",
+                        "target": "all",
+                        "apply_fonts": False,
+                        "first_line_indent_chars": 0.0,
+                        "left_indent_chars": 0.0,
+                        "line_spacing": 18.0,
+                        "line_spacing_rule": 1,
+                        "alignment": 1,
+                    },
+                    {
+                        "action": "normalize_table_cells",
+                        "target": "abbreviation",
+                        "apply_fonts": True,
+                        "far_east_font": "宋体",
+                        "ascii_font": "Times New Roman",
+                        "size": 12,
+                        "first_line_indent_chars": 0.0,
+                        "left_indent_chars": 0.0,
+                        "line_spacing": 18.0,
+                        "line_spacing_rule": 1,
+                        "alignment": 1,
+                    },
+                    {
+                        "action": "normalize_tail_section_fonts",
+                        "sections": ["references", "acknowledgements"],
+                    },
+                    {
                         "action": "finalize_contents",
                         "mode": "full",
                         "update_fields": True,
@@ -319,14 +358,23 @@ def main() -> int:
             "abstract_label_body_format": "confirmed",
             "keywords_cn_label_body_format": "confirmed",
             "keywords_en_label_body_format": "confirmed",
+            "abstract_section_page_break": "confirmed",
+            "abbreviation_table_format": "confirmed",
+            "table_cells_centered": "confirmed",
         }
         required_replaced = {
             "body_sample_font": "confirmed",
+            "body_first_line_indent_2chars": "confirmed",
+            "body_line_spacing_1p5": "confirmed",
             "references_contents_entry_spacing": "confirmed",
             "acknowledgements_contents_entry_spacing": "confirmed",
         }
         required_finalized = {
             "contents_font_pairing": "confirmed",
+            "body_first_line_indent_2chars": "confirmed",
+            "body_line_spacing_1p5": "confirmed",
+            "table_cells_centered": "confirmed",
+            "abbreviation_table_format": "confirmed",
             "references_contents_entry_spacing": "confirmed",
             "acknowledgements_contents_entry_spacing": "confirmed",
         }

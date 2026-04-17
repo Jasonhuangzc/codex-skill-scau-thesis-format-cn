@@ -181,6 +181,15 @@ For `scripts/batch_word_ops.py`, prefer these actions:
 - `normalize_contents_fonts`
   - only changes TOC range (does not touch end-of-document `参考文献` / `致谢` sections)
   - normalize TOC Chinese chars to `宋体`; English/digits/`.` to `Times New Roman`
+- `ensure_page_break_before`
+  - use for hard section boundaries such as the start of the English abstract
+  - prefer `section: "english_abstract"` so the repair stays template-aware and idempotent
+- `normalize_body_paragraph_layout`
+  - use to restore正文 paragraphs to first-line indent `2`, `1.5` line spacing, and justified alignment
+  - excludes headings, figure/table captions, formulas, and table-cell paragraphs
+- `normalize_table_cells`
+  - use `target: "all"` to restore table-cell alignment to centered and clear wrong first-line indents
+  - use `target: "abbreviation"` with `apply_fonts: true` to restore the `英文缩略词（符号表）` table to `宋体 + Times New Roman` small-four and `1.5` line spacing
 - `finalize_contents`
   - runs `refresh_contents(update_fields=true) -> cleanup_contents_entries -> normalize_contents_fonts` in one precise sequence
 - `normalize_tail_section_fonts`
@@ -193,7 +202,10 @@ For `scripts/batch_word_ops.py`, prefer these actions:
 Always prioritize these before declaring the thesis submission-ready:
 
 - `摘        要`, `关键词：`, `Abstract:`, `Key words:` label/body font boundaries
+- Chinese abstract and English abstract boundary:
+  - the English abstract must start with an explicit page break, not only a natural overflow to the next page
 - main body paragraph font pairing, small-four size, and first-line indent
+- main body paragraph first-line indent must be exactly `2` characters, not `1.8` or approximate values
 - `参  考  文  献` heading spacing versus TOC `参考文献` no-spacing
 - `致        谢` heading spacing versus TOC `致谢` no-spacing
 - bibliography entry font pairing, punctuation, hanging indent, and language grouping
@@ -208,6 +220,8 @@ Always prioritize these before declaring the thesis submission-ready:
   - TOC font pairing must be Chinese `宋体`, English/digits/`.` `Times New Roman`
 - body repeated punctuation check for accidental duplicates such as `。。`, `，，`, `；；`, `：：`
 - body paragraph line spacing should remain `1.5` (`LineSpacingRule = 1`), excluding table-cell paragraphs
+- table-cell paragraphs should stay centered
+- the `英文缩略词（符号表）` table should stay `宋体 + Times New Roman` small-four, centered, and `1.5` line spacing
 - figure caption below figure, figure note below caption, no figure-caption split across pages
 - continued table headers and table-note placement
 - TOC page numbers aligned with the rendered file

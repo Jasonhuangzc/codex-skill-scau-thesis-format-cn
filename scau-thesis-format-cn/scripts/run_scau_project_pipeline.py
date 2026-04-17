@@ -466,6 +466,45 @@ def main() -> None:
             json.dumps(
                 [
                     {
+                        "action": "ensure_page_break_before",
+                        "section": "english_abstract",
+                    },
+                    {
+                        "action": "normalize_body_paragraph_layout",
+                        "first_line_indent_chars": 2.0,
+                        "left_indent_chars": 0.0,
+                        "line_spacing": 18.0,
+                        "line_spacing_rule": 1,
+                        "alignment": 3,
+                    },
+                    {
+                        "action": "normalize_table_cells",
+                        "target": "all",
+                        "apply_fonts": False,
+                        "first_line_indent_chars": 0.0,
+                        "left_indent_chars": 0.0,
+                        "line_spacing": 18.0,
+                        "line_spacing_rule": 1,
+                        "alignment": 1,
+                    },
+                    {
+                        "action": "normalize_table_cells",
+                        "target": "abbreviation",
+                        "apply_fonts": True,
+                        "far_east_font": "宋体",
+                        "ascii_font": "Times New Roman",
+                        "size": 12,
+                        "first_line_indent_chars": 0.0,
+                        "left_indent_chars": 0.0,
+                        "line_spacing": 18.0,
+                        "line_spacing_rule": 1,
+                        "alignment": 1,
+                    },
+                    {
+                        "action": "normalize_tail_section_fonts",
+                        "sections": ["references", "acknowledgements"],
+                    },
+                    {
                         "action": "finalize_contents",
                         "mode": "full",
                         "update_fields": True,

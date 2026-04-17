@@ -312,6 +312,39 @@ def paragraph_has_page_break(paragraph) -> bool:
     return 'w:type="page"' in xml or "<w:lastRenderedPageBreak" in xml
 
 
+def find_paragraph_index_startswith(paragraphs, prefix: str) -> int | None:
+    for index, paragraph in enumerate(paragraphs):
+        if paragraph.text.strip().startswith(prefix):
+            return index
+    return None
+
+
+def ensure_frontmatter_page_breaks(doc: Document) -> dict:
+    paragraphs = doc.paragraphs
+    abstract_index = find_paragraph_index_startswith(paragraphs, "Abstract:")
+    if abstract_index is None:
+        return {"english_abstract_page_break": "missing_abstract_label"}
+
+    english_title_index = None
+    previous_indices: list[int] = []
+    current = abstract_index - 1
+    while current >= 0 and len(previous_indices) < 3:
+        if paragraphs[current].text.strip():
+            previous_indices.append(current)
+        current -= 1
+    previous_indices.reverse()
+    if previous_indices:
+        english_title_index = previous_indices[0]
+
+    if english_title_index is None or english_title_index >= len(paragraphs):
+        return {"english_abstract_page_break": "missing_title_target"}
+    paragraphs[english_title_index].paragraph_format.page_break_before = True
+    return {
+        "english_abstract_page_break": "applied",
+        "paragraph_index": english_title_index,
+    }
+
+
 def normalize_cover_gap(doc: Document) -> dict:
     paragraphs = doc.paragraphs
     declaration_index = None
@@ -370,6 +403,7 @@ def main() -> None:
     replace_cover(doc, meta, args.paper_type)
     replace_abstract_frontmatter(doc, meta)
     cover_gap_report = normalize_cover_gap(doc)
+    frontmatter_page_breaks = ensure_frontmatter_page_breaks(doc)
     doc.save(output_path)
     print(
         json.dumps(
@@ -377,6 +411,7 @@ def main() -> None:
                 "output": str(output_path),
                 "frontmatter_checks": {
                     "cover_to_declaration": cover_gap_report,
+                    "frontmatter_page_breaks": frontmatter_page_breaks,
                 },
             },
             ensure_ascii=False,

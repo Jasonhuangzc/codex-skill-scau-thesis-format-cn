@@ -16,6 +16,7 @@ WD_COLLAPSE_END = 0
 WD_COLLAPSE_START = 1
 WD_PAGE_BREAK = 7
 WD_GO_TO_BOOKMARK = -1
+WD_ALIGN_PARAGRAPH_CENTER = 1
 WD_ALIGN_PARAGRAPH_LEFT = 0
 WD_ALIGN_PARAGRAPH_JUSTIFY = 3
 WD_LINE_SPACE_1PT5 = 1
@@ -128,6 +129,73 @@ def find_paragraph_index(document, pattern: str, start_index: int = 1) -> int | 
     return None
 
 
+def find_previous_nonempty_paragraph_indices(document, start_index: int, count: int) -> list[int]:
+    indices: list[int] = []
+    current = start_index - 1
+    while current >= 1 and len(indices) < count:
+        if paragraph_text(document.Paragraphs(current)):
+            indices.append(current)
+        current -= 1
+    indices.reverse()
+    return indices
+
+
+def find_first_after_position(document, start_index: int, pattern: str) -> int | None:
+    regex = re.compile(pattern)
+    for index in range(start_index, document.Paragraphs.Count + 1):
+        if regex.search(paragraph_text(document.Paragraphs(index))):
+            return index
+    return None
+
+
+def paragraph_has_explicit_page_break(paragraph) -> bool:
+    paragraph_format = paragraph.Range.ParagraphFormat
+    page_break_before = getattr(paragraph_format, "PageBreakBefore", None)
+    if page_break_before not in (0, False, None, ""):
+        return True
+    text = str(paragraph.Range.Text)
+    return "\f" in text or "\x0c" in text
+
+
+def resolve_anchor_paragraph_index(document, operation: dict[str, object]) -> int:
+    section = operation.get("section")
+    if isinstance(section, str) and section:
+        if section == "english_abstract":
+            abstract_index = find_paragraph_index(document, r"^Abstract:")
+            if abstract_index is None:
+                raise ValueError("Could not locate the English abstract label `Abstract:`.")
+            indices = find_previous_nonempty_paragraph_indices(document, abstract_index, 3)
+            if not indices:
+                raise ValueError("Could not locate the English abstract title paragraph.")
+            return indices[0]
+        if section == "contents":
+            contents_index = find_paragraph_index(document, r"^目\s*录$")
+            if contents_index is None:
+                raise ValueError("Could not locate the table-of-contents title.")
+            return contents_index
+        if section == "references":
+            references_index = find_paragraph_index(document, r"^参\s*考\s*文\s*献$")
+            if references_index is None:
+                raise ValueError("Could not locate the references title.")
+            return references_index
+        raise ValueError(f"Unsupported section anchor: {section}")
+
+    paragraph_pattern = operation.get("paragraph_pattern")
+    if isinstance(paragraph_pattern, str) and paragraph_pattern:
+        pattern_index = find_paragraph_index(document, paragraph_pattern)
+        if pattern_index is None:
+            raise ValueError(f"Paragraph pattern not found: {paragraph_pattern}")
+        return pattern_index
+
+    range_anchor = get_anchor_range(document, operation)
+    anchor_start = int(range_anchor.Start)
+    for index in range(1, document.Paragraphs.Count + 1):
+        paragraph = document.Paragraphs(index)
+        if int(paragraph.Range.Start) <= anchor_start < int(paragraph.Range.End):
+            return index
+    raise ValueError("Could not resolve the anchor to a paragraph index.")
+
+
 def copy_basic_font_format(target_range, template_range) -> None:
     target_font = target_range.Font
     template_font = template_range.Font
@@ -188,6 +256,64 @@ def apply_paragraph_preset(
         paragraph_format.LineSpacing = line_spacing
     if alignment is not None:
         paragraph_format.Alignment = alignment
+
+
+def paragraph_matches_body_text(text: str) -> bool:
+    if not text.strip():
+        return False
+    if re.match(r"^\d+(?:\.\d+){0,3}\s+", text):
+        return False
+    if re.match(r"^(图|表|续表|注[:：]|（式)", text):
+        return False
+    return True
+
+
+def find_first_body_heading_index(document) -> int | None:
+    toc_end = int(document.TablesOfContents(1).Range.End) if int(document.TablesOfContents.Count) else 0
+    for index in range(1, document.Paragraphs.Count + 1):
+        paragraph = document.Paragraphs(index)
+        if int(paragraph.Range.Start) <= toc_end:
+            continue
+        text = paragraph_text(paragraph)
+        if re.match(r"^\d+\s+", text):
+            return index
+    return find_paragraph_index(document, r"^\d+\s+")
+
+
+def find_references_heading_index(document) -> int | None:
+    return find_paragraph_index(document, r"^参\s*考\s*文\s*献$")
+
+
+def find_abbreviation_table(document):
+    heading_index = find_paragraph_index(document, r"^英文缩略词（符号表）$")
+    if heading_index is None:
+        return None, None
+    heading_start = int(document.Paragraphs(heading_index).Range.Start)
+    contents_index = find_paragraph_index(document, r"^目\s*录$", heading_index + 1)
+    contents_start = int(document.Paragraphs(contents_index).Range.Start) if contents_index is not None else sys.maxsize
+    for table_index in range(1, int(document.Tables.Count) + 1):
+        table = document.Tables(table_index)
+        table_start = int(table.Range.Start)
+        if heading_start < table_start < contents_start:
+            return table_index, table
+    return None, None
+
+
+def iter_table_paragraphs(table):
+    row_count = int(table.Rows.Count)
+    col_count = int(table.Columns.Count)
+    for row_index in range(1, row_count + 1):
+        for col_index in range(1, col_count + 1):
+            try:
+                cell = table.Cell(row_index, col_index)
+            except Exception:
+                continue
+            for paragraph_index in range(1, cell.Range.Paragraphs.Count + 1):
+                paragraph = cell.Range.Paragraphs(paragraph_index)
+                text = paragraph_text(paragraph)
+                if not text:
+                    continue
+                yield row_index, col_index, paragraph, text
 
 
 def update_document_fields(document) -> int:
@@ -526,6 +652,144 @@ def normalize_tail_section_fonts(document, operation: dict[str, object], result:
     )
 
 
+def ensure_page_break_before(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    paragraph_index = resolve_anchor_paragraph_index(document, operation)
+    paragraph = document.Paragraphs(paragraph_index)
+    if paragraph_has_explicit_page_break(paragraph):
+        result.append(
+            {
+                "action": "ensure_page_break_before",
+                "result": "already_present",
+                "paragraph_index": paragraph_index,
+            }
+        )
+        return
+
+    for previous_index in (paragraph_index - 1, paragraph_index - 2):
+        if previous_index >= 1 and paragraph_has_explicit_page_break(document.Paragraphs(previous_index)):
+            result.append(
+                {
+                    "action": "ensure_page_break_before",
+                    "result": "already_present",
+                    "paragraph_index": paragraph_index,
+                    "neighbor_index": previous_index,
+                }
+            )
+            return
+
+    paragraph.Range.ParagraphFormat.PageBreakBefore = -1
+    result.append(
+        {
+            "action": "ensure_page_break_before",
+            "result": "applied",
+            "paragraph_index": paragraph_index,
+        }
+    )
+
+
+def normalize_body_paragraph_layout(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    start_index = find_first_body_heading_index(document)
+    end_index = find_references_heading_index(document) or (document.Paragraphs.Count + 1)
+    if start_index is None:
+        result.append(
+            {
+                "action": "normalize_body_paragraph_layout",
+                "result": "not_found",
+                "note": "Could not locate the first body heading.",
+            }
+        )
+        return
+
+    updated = 0
+    for index in range(start_index + 1, end_index):
+        paragraph = document.Paragraphs(index)
+        if int(paragraph.Range.Tables.Count) > 0:
+            continue
+        text = paragraph_text(paragraph)
+        if not paragraph_matches_body_text(text):
+            continue
+        apply_paragraph_preset(
+            paragraph.Range,
+            first_line_indent_chars=float(operation.get("first_line_indent_chars", 2.0)),
+            left_indent_chars=float(operation.get("left_indent_chars", 0.0)),
+            line_spacing=float(operation.get("line_spacing", 18.0)),
+            line_spacing_rule=int(operation.get("line_spacing_rule", WD_LINE_SPACE_1PT5)),
+            alignment=int(operation.get("alignment", WD_ALIGN_PARAGRAPH_JUSTIFY)),
+        )
+        updated += 1
+
+    result.append(
+        {
+            "action": "normalize_body_paragraph_layout",
+            "result": "applied",
+            "start_paragraph": start_index,
+            "end_paragraph_exclusive": end_index,
+            "updated_paragraphs": updated,
+        }
+    )
+
+
+def normalize_table_cells(document, operation: dict[str, object], result: list[dict[str, object]]) -> None:
+    target = str(operation.get("target", "all"))
+    apply_fonts = bool(operation.get("apply_fonts", False))
+    far_east_font = str(operation.get("far_east_font", "宋体"))
+    ascii_font = str(operation.get("ascii_font", "Times New Roman"))
+    size = float(operation.get("size", SMALL_FOUR_PT))
+
+    tables: list[tuple[int, object]] = []
+    if target == "abbreviation":
+        table_index, table = find_abbreviation_table(document)
+        if table is not None and table_index is not None:
+            tables.append((table_index, table))
+    else:
+        for table_index in range(1, int(document.Tables.Count) + 1):
+            tables.append((table_index, document.Tables(table_index)))
+
+    if not tables:
+        result.append(
+            {
+                "action": "normalize_table_cells",
+                "result": "not_found",
+                "target": target,
+            }
+        )
+        return
+
+    updated = 0
+    touched_tables: list[int] = []
+    for table_index, table in tables:
+        touched_tables.append(table_index)
+        for _row, _column, paragraph, _text in iter_table_paragraphs(table):
+            apply_paragraph_preset(
+                paragraph.Range,
+                first_line_indent_chars=float(operation.get("first_line_indent_chars", 0.0)),
+                left_indent_chars=float(operation.get("left_indent_chars", 0.0)),
+                line_spacing=float(operation.get("line_spacing", 18.0)),
+                line_spacing_rule=int(operation.get("line_spacing_rule", WD_LINE_SPACE_1PT5)),
+                alignment=int(operation.get("alignment", WD_ALIGN_PARAGRAPH_CENTER)),
+            )
+            if apply_fonts:
+                apply_font_preset(
+                    paragraph.Range,
+                    far_east=far_east_font,
+                    ascii_font=ascii_font,
+                    size=size,
+                    bold=False,
+                )
+            updated += 1
+
+    result.append(
+        {
+            "action": "normalize_table_cells",
+            "result": "applied",
+            "target": target,
+            "table_indices": touched_tables,
+            "updated_paragraphs": updated,
+            "apply_fonts": apply_fonts,
+        }
+    )
+
+
 def get_anchor_range(document, operation: dict[str, object]):
     bookmark = operation.get("bookmark")
     if isinstance(bookmark, str) and bookmark:
@@ -683,6 +947,8 @@ def apply_operations(
             insert_text_after(document, operation, results)
         elif action == "insert_page_break_before":
             insert_page_break_before(document, operation, results)
+        elif action == "ensure_page_break_before":
+            ensure_page_break_before(document, operation, results)
         elif action == "insert_image_after":
             insert_image_after(document, operation, results)
         elif action == "refresh_contents":
@@ -712,6 +978,10 @@ def apply_operations(
             finalize_contents(document, operation, results)
         elif action == "normalize_tail_section_fonts":
             normalize_tail_section_fonts(document, operation, results)
+        elif action == "normalize_body_paragraph_layout":
+            normalize_body_paragraph_layout(document, operation, results)
+        elif action == "normalize_table_cells":
+            normalize_table_cells(document, operation, results)
         else:
             raise ValueError(f"Unsupported action: {action}")
         append_stage_log(

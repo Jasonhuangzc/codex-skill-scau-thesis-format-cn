@@ -12,6 +12,7 @@ from pathlib import Path
 from reference_order_utils import inspect_reference_sequence
 
 WD_LINE_SPACE_1PT5 = 1
+WD_ALIGN_PARAGRAPH_CENTER = 1
 FONT_ALIASES = {
     "宋体": ("宋体", "SimSun"),
     "黑体": ("黑体", "SimHei"),
@@ -328,7 +329,52 @@ def paragraph_format_signature(paragraph) -> dict[str, object]:
         "line_spacing": getattr(paragraph_format, "LineSpacing", None),
         "character_unit_first_line_indent": getattr(paragraph_format, "CharacterUnitFirstLineIndent", None),
         "character_unit_left_indent": getattr(paragraph_format, "CharacterUnitLeftIndent", None),
+        "page_break_before": getattr(paragraph_format, "PageBreakBefore", None),
     }
+
+
+def numeric_matches(observed: object, expected: float, tolerance: float = 0.12) -> bool:
+    if observed is None:
+        return False
+    try:
+        return abs(float(observed) - expected) <= tolerance
+    except (TypeError, ValueError):
+        return False
+
+
+def paragraph_has_explicit_page_break(paragraph) -> bool:
+    paragraph_format = paragraph.Range.ParagraphFormat
+    page_break_before = getattr(paragraph_format, "PageBreakBefore", None)
+    if page_break_before not in (0, False, None, ""):
+        return True
+    text = str(paragraph.Range.Text)
+    return "\f" in text or "\x0c" in text
+
+
+def table_cell_paragraphs(table) -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    row_count = int(table.Rows.Count)
+    col_count = int(table.Columns.Count)
+    for row_index in range(1, row_count + 1):
+        for col_index in range(1, col_count + 1):
+            try:
+                cell = table.Cell(row_index, col_index)
+            except Exception:
+                continue
+            for paragraph_index in range(1, cell.Range.Paragraphs.Count + 1):
+                paragraph = cell.Range.Paragraphs(paragraph_index)
+                text = normalize_text(paragraph.Range.Text)
+                if not text:
+                    continue
+                items.append(
+                    {
+                        "row": row_index,
+                        "column": col_index,
+                        "paragraph": paragraph,
+                        "text": text,
+                    }
+                )
+    return items
 
 
 def paragraph_check(
@@ -709,6 +755,190 @@ def body_line_spacing_check(
     }
 
 
+def english_abstract_page_break_check(
+    document,
+    paragraphs: list[dict[str, object]],
+    *,
+    english_title_item: dict[str, object] | None,
+) -> dict[str, object]:
+    expected_note = "中文摘要与英文摘要之间应使用明确分页符，英文题目所在段落应以新页起始。"
+    if english_title_item is None:
+        return {
+            "status": "manual_confirm",
+            "expected": expected_note,
+            "note": "未定位到英文题目段落。",
+        }
+
+    paragraph_index = int(english_title_item["index"])
+    candidates = [english_title_item["paragraph"]]
+    for offset in (1, 2):
+        previous_index = paragraph_index - offset
+        if previous_index < 1:
+            continue
+        candidates.append(document.Paragraphs(previous_index))
+
+    has_break = any(paragraph_has_explicit_page_break(paragraph) for paragraph in candidates)
+    return {
+        "status": "confirmed" if has_break else "suggested",
+        "paragraph_text": english_title_item["text"],
+        "expected": expected_note,
+        "observed": {
+            "paragraph_index": paragraph_index,
+            "current_page_break_before": paragraph_format_signature(english_title_item["paragraph"]).get("page_break_before"),
+            "neighbor_has_explicit_page_break": has_break,
+        },
+    }
+
+
+def body_first_line_indent_check(
+    paragraphs: list[dict[str, object]],
+    *,
+    toc_end: int,
+    references_title_item: dict[str, object] | None,
+) -> dict[str, object]:
+    expected_note = "正文段落首行缩进应精确为 2 个字符。"
+    body_end = int(references_title_item["paragraph"].Range.Start) if references_title_item else float("inf")
+    checked = 0
+    mismatches: list[dict[str, object]] = []
+    for item in paragraphs:
+        start = int(item["paragraph"].Range.Start)
+        if start <= toc_end or start >= body_end:
+            continue
+        if int(item["paragraph"].Range.Tables.Count) > 0:
+            continue
+        text = str(item["text"]).strip()
+        if not text:
+            continue
+        if re.match(r"^\d+(?:\.\d+){0,3}\s+", text):
+            continue
+        if re.match(r"^(图|表|续表|注[:：]|（式)", text):
+            continue
+        signature = paragraph_format_signature(item["paragraph"])
+        checked += 1
+        if not numeric_matches(signature.get("character_unit_first_line_indent"), 2.0):
+            mismatches.append(
+                {
+                    "paragraph_index": item["index"],
+                    "text": text,
+                    "character_unit_first_line_indent": signature.get("character_unit_first_line_indent"),
+                    "character_unit_left_indent": signature.get("character_unit_left_indent"),
+                }
+            )
+    return {
+        "status": "confirmed" if checked > 0 and not mismatches else "suggested",
+        "expected": expected_note,
+        "paragraphs_checked": checked,
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches[:30],
+    }
+
+
+def table_cells_center_check(document) -> dict[str, object]:
+    expected_note = "表格内容段落应居中对齐。"
+    checked = 0
+    mismatches: list[dict[str, object]] = []
+    for table_index in range(1, int(document.Tables.Count) + 1):
+        table = document.Tables(table_index)
+        for item in table_cell_paragraphs(table):
+            signature = paragraph_format_signature(item["paragraph"])
+            checked += 1
+            if int(signature.get("alignment") or -1) != WD_ALIGN_PARAGRAPH_CENTER:
+                mismatches.append(
+                    {
+                        "table_index": table_index,
+                        "row": item["row"],
+                        "column": item["column"],
+                        "text": item["text"],
+                        "alignment": signature.get("alignment"),
+                    }
+                )
+    if checked == 0:
+        return {
+            "status": "manual_confirm",
+            "expected": expected_note,
+            "note": "文档中未检测到可见表格内容段落。",
+        }
+    return {
+        "status": "confirmed" if not mismatches else "suggested",
+        "expected": expected_note,
+        "paragraphs_checked": checked,
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches[:30],
+    }
+
+
+def abbreviation_table_format_check(
+    document,
+    paragraphs: list[dict[str, object]],
+    *,
+    contents_title_item: dict[str, object] | None,
+) -> dict[str, object]:
+    expected_note = "英文缩略词（符号表）中的表格内容应为宋体 + Times New Roman 小四号、1.5 倍行距、居中对齐。"
+    heading_item = find_first(paragraphs, r"^英文缩略词（符号表）$")
+    if heading_item is None:
+        return {
+            "status": "manual_confirm",
+            "expected": expected_note,
+            "note": "文档中未定位到“英文缩略词（符号表）”标题。",
+        }
+
+    start_position = int(heading_item["paragraph"].Range.Start)
+    end_position = int(contents_title_item["paragraph"].Range.Start) if contents_title_item is not None else float("inf")
+    target_table = None
+    target_table_index = None
+    for table_index in range(1, int(document.Tables.Count) + 1):
+        table = document.Tables(table_index)
+        table_start = int(table.Range.Start)
+        if table_start > start_position and table_start < end_position:
+            target_table = table
+            target_table_index = table_index
+            break
+
+    if target_table is None:
+        return {
+            "status": "manual_confirm",
+            "expected": expected_note,
+            "note": "已定位到缩略词标题，但在目录之前未找到对应表格。",
+        }
+
+    checked = 0
+    mismatches: list[dict[str, object]] = []
+    for item in table_cell_paragraphs(target_table):
+        signature = paragraph_format_signature(item["paragraph"])
+        segments = ensure_segments({"paragraph": item["paragraph"], "text": item["text"]})
+        visible_segments = [segment for segment in segments if str(segment["text"]).strip()]
+        chinese_segments = [segment for segment in visible_segments if re.search(r"[\u4e00-\u9fff]", str(segment["text"]))]
+        western_segments = [segment for segment in visible_segments if re.search(r"[A-Za-z0-9]", str(segment["text"]))]
+        checked += 1
+        segment_checks = [
+            all(size_matches(segment.get("size"), 12) for segment in visible_segments),
+            any(contains_font(segment, "宋体", "far_east_font") for segment in chinese_segments) if chinese_segments else True,
+            any(contains_font(segment, "Times New Roman", "ascii_font") for segment in western_segments) if western_segments else True,
+            int(signature.get("alignment") or -1) == WD_ALIGN_PARAGRAPH_CENTER,
+            int(signature.get("line_spacing_rule") or -1) == WD_LINE_SPACE_1PT5,
+            numeric_matches(signature.get("character_unit_first_line_indent"), 0.0),
+        ]
+        if not all(segment_checks):
+            mismatches.append(
+                {
+                    "table_index": target_table_index,
+                    "row": item["row"],
+                    "column": item["column"],
+                    "text": item["text"],
+                    "paragraph_format": signature,
+                    "segment_samples": visible_segments[:6],
+                }
+            )
+    return {
+        "status": "confirmed" if checked > 0 and not mismatches else "suggested",
+        "expected": expected_note,
+        "table_index": target_table_index,
+        "paragraphs_checked": checked,
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches[:30],
+    }
+
+
 def reference_order_check(
     paragraphs: list[dict[str, object]],
     *,
@@ -813,10 +1043,26 @@ def inspect_document(input_path: Path) -> dict[str, object]:
             toc_end=toc_end,
             references_title_item=references_title_item,
         )
+        english_abstract_page_break = english_abstract_page_break_check(
+            document,
+            paragraphs,
+            english_title_item=english_title_item,
+        )
         body_spacing = body_line_spacing_check(
             paragraphs,
             toc_end=toc_end,
             references_title_item=references_title_item,
+        )
+        body_indent = body_first_line_indent_check(
+            paragraphs,
+            toc_end=toc_end,
+            references_title_item=references_title_item,
+        )
+        table_alignment = table_cells_center_check(document)
+        abbreviation_table = abbreviation_table_format_check(
+            document,
+            paragraphs,
+            contents_title_item=contents_title_item,
         )
         reference_order = reference_order_check(
             paragraphs,
@@ -867,6 +1113,7 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                     "Key words:",
                     "“Key words:”标签加粗，后续关键词内容不加粗，且都使用 Times New Roman。",
                 ),
+                "abstract_section_page_break": english_abstract_page_break,
                 "contents_title_font": paragraph_check(
                     contents_title_item,
                     expected_far_east="黑体",
@@ -894,7 +1141,10 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                     "致谢正文使用中文宋体、西文 Times New Roman、小四号，不作为显式加粗项。",
                 ),
                 "contents_font_pairing": toc_font,
+                "table_cells_centered": table_alignment,
+                "abbreviation_table_format": abbreviation_table,
                 "body_repeated_punctuation": repeated_punctuation,
+                "body_first_line_indent_2chars": body_indent,
                 "body_line_spacing_1p5": body_spacing,
                 "reference_ordering": reference_order,
                 **toc_checks,
@@ -905,7 +1155,9 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                 "正文、参考文献、致谢被修改后，要回看字符级字体和字号，不要只看内容是否正确。",
                 "每次刷新目录后，都要复查目录中的“参考文献”和“致谢”是否被标题空格污染。",
                 "目录字体要单独复查：中文宋体，英文数字和小数点 Times New Roman。",
-                "正文要复查重复标点（如“。。”、“，，”）以及是否维持 1.5 倍行距。",
+                "中文摘要与英文摘要之间要复查是否使用了明确分页符，而不是仅靠自然换页。",
+                "正文要复查重复标点（如“。。”、“，，”）、首行缩进是否精确为 2 个字符，以及是否维持 1.5 倍行距。",
+                "表格内容要复查是否居中；英文缩略词（符号表）要单独复查小四、1.5 倍行距和居中。",
                 "页面位置、跨页、目录页码等仍需配合渲染页面审查。",
             ],
         }

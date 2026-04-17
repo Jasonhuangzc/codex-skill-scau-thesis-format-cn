@@ -28,6 +28,10 @@ The runner now officially supports these safe scopes:
 - Figure manifest generation prefers chapter-text anchors such as `如图3-1所示` over a broad `图3-1` regex.
 - The runner can route only the figure step through Word COM by passing `--figure-backend word-com`.
 - On Windows, the runner now ends with a TOC finalization pass:
+  - ensure the English abstract starts with an explicit page break
+  - normalize正文 paragraphs back to first-line indent `2` and `1.5` line spacing
+  - normalize table-cell paragraphs to centered alignment
+  - normalize the `英文缩略词（符号表）` table to `宋体 + Times New Roman` small-four, centered, `1.5` line spacing
   - update fields
   - clean TOC `参考文献` / `致谢` entries
   - normalize TOC Chinese characters to `宋体`

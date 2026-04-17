@@ -29,6 +29,7 @@ These rules come directly from the 50 Word comments in the official 2024 `附件
   - the label `Abstract:` is explicitly bold
   - the body text immediately after `Abstract:` is not bold
   - both label and body use `Times New Roman`
+  - the English abstract starts on a new page with an explicit page break
   - second and later paragraphs use a two-character first-line indent
   - comma, period, colon, and semicolon are followed by one half-width space
 - `Key words`:
@@ -72,6 +73,7 @@ These rules come directly from the 50 Word comments in the official 2024 `附件
   - small-four size
   - first-line indent of two characters
   - `1.5` line spacing
+  - treat `1.8` or similar first-line-indent values as format defects
 - do not auto-judge `加粗` only from the use of `黑体` or `楷体`
 - only enforce bold as a hard rule when the template comment explicitly says `加粗`
 
@@ -89,6 +91,8 @@ These rules come directly from the 50 Word comments in the official 2024 `附件
 - table titles sit above the table
 - table notes sit below the table
 - continued tables repeat the table number and the header row
+- table-cell paragraphs are centered
+- the `英文缩略词（符号表）` table uses `宋体 + Times New Roman` small-four, centered paragraphs, and `1.5` line spacing
 - formulas are centered
 - formula numbers are right aligned and do not use leader dashes
 - footnotes use continuous numbering
