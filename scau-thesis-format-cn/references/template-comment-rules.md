@@ -102,6 +102,7 @@ These rules come directly from the 50 Word comments in the official 2024 `附件
 - citation outer parentheses use full-width Chinese brackets
 - punctuation inside citation parentheses uses half-width symbols
 - commas and semicolons inside citation parentheses are followed by one half-width space
+- temperature units use the Celsius symbol `℃`; do not write `度C`
 - multiple citations at one location:
   - Chinese first
   - foreign-language references second

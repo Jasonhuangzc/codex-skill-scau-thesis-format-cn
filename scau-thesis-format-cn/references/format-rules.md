@@ -198,6 +198,9 @@ These come from explicit comments in the 2024 `附件6` and should be treated as
 - Bibliography examples:
   - punctuation is half-width
   - punctuation spacing follows the template comments
+- Temperature notation:
+  - use the Celsius symbol `℃`
+  - do not use `度C`
 - Subfigure labels:
   - the template comment uses `(a)`, `(b)`, `(c)` style directly under each panel
 - `图表版式`:
@@ -244,6 +247,7 @@ When the user provides a Word file for final review, prioritize these checks in 
    - continued-table layout
    - figure or caption page splitting
    - teacher-visible punctuation and bracket details in citations, bibliography, keywords, and subfigure labels
+   - temperature notation consistency (`℃`, not `度C`)
    - TOC cleanup state for `参考文献` and `致谢`
    - post-edit font drift in正文, bibliography, and acknowledgement paragraphs
 2. Text-structure checks
