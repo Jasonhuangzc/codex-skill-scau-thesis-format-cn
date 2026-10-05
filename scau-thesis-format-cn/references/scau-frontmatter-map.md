@@ -5,7 +5,7 @@ Its source-of-truth is the 2024 official `附件6` Word template under `assets/o
 
 ## Cover paragraph anchors
 
-Paragraph indices are zero-based within `Document.paragraphs`.
+These zero-based indices describe the initial converted template only. The filler resolves stable labels on every run and checks cover run positions; indices may change after cover-gap cleanup or multi-paragraph abstracts.
 
 | Paragraph index | Expected anchor text | Replacement rule |
 | --- | --- | --- |
@@ -35,8 +35,15 @@ Paragraph indices are zero-based within `Document.paragraphs`.
 
 Before using the map:
 
-- confirm the template paragraph count still covers these anchors
-- confirm the expected anchor text still appears in the mapped paragraphs
-- stop if the anchor text has moved or been replaced by another template version
+- identify the unique cover labels, declaration heading, abstract heading, keyword labels and Abstract label
+- locate the cover title between paper type and college, and the three English title/author/affiliation lines before Abstract
+- validate cover run positions and non-empty trailing/split field runs; stop on missing/ambiguous anchors or a changed run map
+- do not require historical paragraph indices when processing an already-filled working copy
 
 If the template changed, refresh the map with `scripts/extract_docx_comments.py` and update the workflow instead of forcing the old indices.
+
+## Repeat updates and source values
+
+`fill_scau_frontmatter.py` preserves metadata-omitted abstract and keyword blocks. Supplied abstracts are written as actual paragraphs, retaining the label/body font distinction; explicitly empty supplied content is rejected. Chinese and English abstracts may grow beyond their initial two donor paragraphs without shifting later labels. The cover metadata and English identity/affiliation keys remain required by this script.
+
+Blank cover-gap paragraphs containing section properties are retained. English title `pageBreakBefore` is a chosen stable layout implementation; template compliance still needs rendered page review. These synthetic regression checks do not verify a newly imported official template.

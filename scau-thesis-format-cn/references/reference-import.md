@@ -31,7 +31,7 @@ and inserts them in that order.
 
 Within the Chinese block, the script sorts entries by the first author's surname in Hanyu Pinyin order.
 
-Within the foreign-language block, the script sorts entries by the first author's surname in alphabetical order. This block covers western-language and Russian entries in the current skill rule.
+Within the foreign-language block, the script sorts entries by the first author's surname in alphabetical order. The implementation uses one foreign-language block; verify language subgroup requirements against the applicable PDF before using a mixed-language bibliography.
 
 ## Commands
 
@@ -59,7 +59,7 @@ python scripts/insert_reference_batch.py `
 - replaces the existing sample entries unless `--reformat-only` is used
 - keeps Chinese entries first and foreign-language entries second
 - sorts Chinese entries by the first author's surname in Hanyu Pinyin order
-- sorts western-language and Russian entries by the first author's surname in alphabetical order
+- sorts the foreign-language block by normalized author keys; this implementation does not certify cross-language collation rules
 - clones the template reference paragraph style from the sample bibliography
 - reapplies one-and-a-half line spacing and zero paragraph spacing
 - reapplies hanging indent as two characters through OOXML character-based indentation
@@ -68,4 +68,10 @@ python scripts/insert_reference_batch.py `
 
 - Keep one final bibliography draft file, for example `drafts/references_final.md`.
 - The file should already be grouped by language.
-- The insertion script will re-sort each language group to the current SCAU skill rule before writing into the template.
+- The insertion script re-sorts each implemented language group before writing. Confirm the applicable school rule and special surnames first; the algorithm is not evidence of official language subgroup order.
+
+## Collation evidence
+
+Chinese insertion requires `pypinyin`; raw Unicode and unspecified Chinese locale sorting do not establish Hanyu Pinyin surname order. Audit reports downgrade unavailable collation to `manual_confirm`. Compound/polyphonic surnames and language subgroup ordering need verification against the applicable file. Sorting never establishes whether an entry is cited or whether its source is real.
+
+Reference heading discovery excludes real TOC fields/styles and rejects duplicate body anchors. Review data, fields, section boundaries and unsupported objects in the replacement range require targeted Word editing; reformat-only also refuses hyperlinks that its ordinary-run writer cannot safely preserve. Output paths must differ from source files.

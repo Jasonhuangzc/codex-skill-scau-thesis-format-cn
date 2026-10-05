@@ -14,6 +14,8 @@ from docx.text.paragraph import Paragraph
 from reference_order_utils import sort_reference_entries
 from word_template_utils import (
     default_output_path,
+    contents_paragraph_elements,
+    ensure_output_copy,
     find_heading_donors,
     insert_paragraph_before,
     insert_paragraph_after,
@@ -75,24 +77,42 @@ def parse_reference_source(path: Path) -> list[str]:
 
 
 def find_reference_heading(document: Document) -> Paragraph:
-    for paragraph in document.paragraphs:
-        if normalize_keyword_heading(paragraph.text) == "参考文献":
-            return paragraph
-    raise RuntimeError("Could not find the 参考文献 heading in the document.")
+    contents = contents_paragraph_elements(document)
+    matches = [paragraph for paragraph in document.paragraphs
+               if paragraph._p not in contents and normalize_keyword_heading(paragraph.text) == "参考文献"]
+    if len(matches) != 1:
+        raise RuntimeError(f"Expected one non-TOC 参考文献 heading; found {len(matches)}.")
+    return matches[0]
 
 
 def find_reference_range(document: Document, heading: Paragraph):
     blocks = list(iter_block_items(document))
+    contents = contents_paragraph_elements(document)
     heading_index = next(idx for idx, block in enumerate(blocks) if same_block(block, heading))
     end_anchor = None
     for block in blocks[heading_index + 1 :]:
-        if not isinstance(block, Paragraph):
+        if not isinstance(block, Paragraph) or block._p in contents:
             continue
         normalized = normalize_keyword_heading(block.text)
         if normalized.startswith("附录") or normalized == "致谢":
             end_anchor = block
             break
     return blocks, heading_index, end_anchor
+
+
+def validate_reference_range(document: Document, heading: Paragraph, end_anchor, *, reformat_only: bool) -> None:
+    children = list(document.element.body)
+    start = children.index(heading._p)
+    end = children.index(end_anchor._p) if end_anchor is not None else len(children)
+    for element in children[start + 1:end]:
+        # The body-level final section properties are retained by block iteration.
+        if element.tag.endswith("}sectPr"):
+            continue
+        protected = {"ins", "del", "moveFrom", "moveTo", "fldChar", "fldSimple", "sectPr", "footnoteReference", "endnoteReference", "object", "drawing", "pict", "oMath", "altChunk", "sdt"}
+        if reformat_only:
+            protected.add("hyperlink")
+        if any(node.tag.split("}")[-1] in protected for node in element.iter()):
+            raise RuntimeError("Reference range contains review data or complex objects; use targeted Word editing to preserve them.")
 
 
 def find_reference_donor(document: Document, heading: Paragraph, end_anchor) -> Paragraph:
@@ -102,7 +122,7 @@ def find_reference_donor(document: Document, heading: Paragraph, end_anchor) -> 
             break
         if isinstance(block, Paragraph) and block.text.strip():
             return block
-    donors = find_heading_donors(document)
+    donors = find_heading_donors(document, required=["body"])
     return donors["body"]
 
 
@@ -168,10 +188,12 @@ def main() -> None:
 
     docx_path = Path(args.docx).resolve()
     output_path = Path(args.output).resolve() if args.output else default_output_path(docx_path, "_参考文献")
+    ensure_output_copy(output_path, docx_path, Path(args.references_file).resolve() if args.references_file else None)
     document = Document(docx_path)
 
     heading = find_reference_heading(document)
     _, _, end_anchor = find_reference_range(document, heading)
+    validate_reference_range(document, heading, end_anchor, reformat_only=args.reformat_only)
     donor = find_reference_donor(document, heading, end_anchor)
 
     if args.reformat_only:

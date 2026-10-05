@@ -3,13 +3,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from docx import Document
+from docx.oxml.ns import qn
+from lxml import etree
+
+from word_template_utils import contents_paragraph_elements, delete_range, normalize_heading_text, normalize_keyword_heading
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -70,6 +76,10 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Keep the template's sample body chapters instead of trimming them after insertion.",
     )
+    parser.add_argument("--trim-template-body", action="store_true", help="Explicitly remove a sample body only after matching every body block against the official template.")
+    parser.add_argument("--finalize-contents", action="store_true", help="Opt in to Word COM field/TOC refresh on Windows; does not normalize unrelated document layout.")
+    parser.add_argument("--replace-media", action="store_true", help="Explicitly permit chapter media removal after checking a complete reconstruction manifest; never inferred from figure insertion.")
+    parser.add_argument("--replace-tables", action="store_true", help="Explicitly permit chapter table removal after checking a complete reconstruction manifest.")
     return parser.parse_args()
 
 
@@ -91,7 +101,7 @@ def run_step(step_name: str, command: list[str], cwd: Path) -> str:
         errors="replace",
     )
     if result.stdout.strip():
-        emit_text(result.stdout.strip())
+        emit_text(f"{step_name}: completed", stderr=True)
     if result.returncode != 0:
         recovery_hints = {
             "frontmatter": "检查 thesis_metadata.json、官方模板 docx 路径，以及封面段落锚点是否仍与学校模板一致。",
@@ -120,16 +130,9 @@ def run_step(step_name: str, command: list[str], cwd: Path) -> str:
 
 
 def normalized_heading_from_markdown(path: Path) -> str:
-    heading_re = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
-    text = path.read_text(encoding="utf-8")
-    match = heading_re.search(text)
-    if not match:
-        raise RuntimeError(f"未能从 Markdown 章节草稿识别一级标题: {path}")
-    raw = re.sub(r"\s+", " ", match.group(1)).strip()
-    chapter_match = re.match(r"^第\s*(\d+)\s*章\s*(.+)$", raw)
-    if chapter_match:
-        return f"{chapter_match.group(1)}  {chapter_match.group(2).strip()}"
-    return raw
+    from insert_markdown_chapter import parse_markdown
+
+    return parse_markdown(path)[0].text
 
 
 def chapter_tag_from_heading(heading: str) -> str:
@@ -184,9 +187,14 @@ def discover_metadata_file(project_root: Path) -> Path:
     direct = project_root / "thesis_metadata.json"
     if direct.exists():
         return direct
-    generic = sorted(project_root.rglob("*metadata*.json"))
-    if generic:
-        return generic[0]
+    generic = project_root / "metadata.json"
+    if generic.exists():
+        return generic
+    matches = sorted(project_root.rglob("thesis_metadata.json")) + sorted(project_root.rglob("metadata.json"))
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError("发现多个 metadata JSON，请显式传入 --metadata-file。")
     raise FileNotFoundError("未找到 metadata JSON，请显式传入 --metadata-file。")
 
 
@@ -253,303 +261,218 @@ def default_output_path(project_root: Path, heading: str | None) -> Path:
     return work_dir / f"scau_thesis_{tag}_assembled.docx"
 
 
-def strip_template_body_placeholders(docx_path: Path, chapter_heading: str, output_path: Path) -> Path:
-    document = Document(docx_path)
-    body_start_re = re.compile(r"^1\s+绪论$")
-    target_heading_re = re.compile(rf"^{re.escape(chapter_heading)}$")
-
-    start_index = None
-    end_index = None
-    for index, paragraph in enumerate(document.paragraphs):
-        text = paragraph.text.strip()
-        if start_index is None and body_start_re.match(text):
-            start_index = index
+def template_body_bounds(document):
+    start = None
+    end = None
+    contents = contents_paragraph_elements(document)
+    for paragraph in document.paragraphs:
+        if paragraph._p in contents:
             continue
-        if start_index is not None and target_heading_re.match(text):
-            end_index = index
+        text = normalize_heading_text(paragraph.text)
+        if start is None and re.match(r"^1\s+\S", text):
+            start = paragraph
+        elif start is not None and normalize_keyword_heading(text) == "参考文献":
+            end = paragraph
             break
+    if start is None or end is None:
+        raise RuntimeError("无法唯一定位模板样例正文（第1章至参考文献之前），拒绝宽区间删除。")
+    children = list(document.element.body)
+    return start, end, children[children.index(start._p):children.index(end._p)]
 
-    if start_index is None or end_index is None or start_index >= end_index:
-        raise RuntimeError("未能识别模板示例正文与新插入章节之间的范围，无法裁掉模板正文。")
 
-    for paragraph in list(document.paragraphs[start_index:end_index]):
-        element = paragraph._element
-        element.getparent().remove(element)
+def body_signature(document, elements) -> tuple:
+    xml = tuple(etree.tostring(element, method="c14n") for element in elements)
+    relation_ids = set()
+    relationship_ns = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    for element in elements:
+        for node in element.iter():
+            for attribute, value in node.attrib.items():
+                if attribute.startswith(relationship_ns):
+                    relation_ids.add(value)
+    related = []
+    for relation_id in sorted(relation_ids):
+        relation = document.part.rels[relation_id]
+        payload = relation.target_ref if relation.is_external else relation.target_part.blob
+        related.append((relation_id, relation.reltype, payload))
+    return xml, tuple(related)
 
+
+def strip_template_body_placeholders(docx_path: Path, template_docx: Path, output_path: Path) -> Path:
+    document = Document(docx_path)
+    official = Document(template_docx)
+    start, end, elements = template_body_bounds(document)
+    _, _, official_elements = template_body_bounds(official)
+    if body_signature(document, elements) != body_signature(official, official_elements):
+        raise RuntimeError("工作稿正文与官方模板样例不完全一致，拒绝裁剪；保留其他章节并逐章回灌。")
+    if any(any(element.iter(qn("w:sectPr"))) for element in elements):
+        raise RuntimeError("样例正文包含分节符，需要先确认节边界后再裁剪。")
+    delete_range(document, start, end)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     document.save(output_path)
     return output_path
 
 
+def publish_output(source: Path, destination: Path) -> None:
+    # Publish only a completed pipeline, and keep a prior output intact on failure.
+    with tempfile.NamedTemporaryFile(prefix=".scau-thesis-", suffix=".docx", dir=destination.parent, delete=False) as handle:
+        staging = Path(handle.name)
+    try:
+        shutil.copyfile(source, staging)
+        os.replace(staging, destination)
+    finally:
+        staging.unlink(missing_ok=True)
+
+
 def main() -> None:
     args = parse_args()
-
     project_root = Path(args.project_root).resolve()
+    if not project_root.is_dir():
+        raise FileNotFoundError(f"论文工作目录不存在: {project_root}")
+    if args.keep_template_body and args.trim_template_body:
+        raise ValueError("--keep-template-body 与 --trim-template-body 不能同时使用。")
+    if args.finalize_contents and sys.platform != "win32":
+        raise ValueError("--finalize-contents 需要 Windows + Microsoft Word + pywin32。")
+    if args.figure_backend == "word-com" and not args.skip_figures and sys.platform != "win32":
+        raise ValueError("word-com 图件后端仅可在 Windows 使用。")
+
     chapter_path = Path(args.chapter_file).resolve() if args.chapter_file else None
     chapter_heading = args.chapter_heading
-    if chapter_heading is None and chapter_path is not None:
-        chapter_heading = normalized_heading_from_markdown(chapter_path)
+    if not args.skip_chapter:
+        if chapter_path is None:
+            raise ValueError("未跳过章节插入时，必须提供 --chapter-file。")
+        source_heading = normalized_heading_from_markdown(chapter_path)
+        if chapter_heading and normalize_heading_text(chapter_heading) != normalize_heading_text(source_heading):
+            raise ValueError("--chapter-heading 与 Markdown 的章标题不一致。")
+        chapter_heading = source_heading
 
-    official_template_docx = (
-        Path(args.official_template_docx).resolve()
-        if args.official_template_docx
-        else discover_template_docx(project_root)
-    )
-    metadata_file = (
-        Path(args.metadata_file).resolve()
-        if args.metadata_file
-        else discover_metadata_file(project_root)
-    )
-
+    metadata_file = None
+    if not args.skip_frontmatter:
+        metadata_file = Path(args.metadata_file).resolve() if args.metadata_file else discover_metadata_file(project_root)
     docx_path = Path(args.docx).resolve() if args.docx else discover_docx_path(project_root)
-    if not docx_path.exists() and not args.skip_frontmatter:
-        docx_path = official_template_docx
+    bootstrap = not docx_path.exists() and not args.skip_frontmatter
+    if not docx_path.exists() and not bootstrap:
+        raise FileNotFoundError(f"工作稿不存在，局部回灌需要已有 --docx: {docx_path}")
+
+    tables_manifest = Path(args.tables_manifest).resolve() if args.tables_manifest and not args.skip_tables else None
+    official_template_docx = Path(args.official_template_docx).resolve() if args.official_template_docx else None
+    requires_template = bootstrap or args.trim_template_body
+    if official_template_docx is None and (requires_template or not args.skip_chapter or not args.skip_figures or tables_manifest is not None):
+        try:
+            official_template_docx = discover_template_docx(project_root)
+        except FileNotFoundError:
+            if requires_template:
+                raise
+    for label, path in (("metadata", metadata_file), ("official template", official_template_docx), ("tables manifest", tables_manifest)):
+        if path is not None and not path.is_file():
+            raise FileNotFoundError(f"{label} 不存在: {path}")
 
     figures_root = Path(args.figures_root).resolve() if args.figures_root else discover_figures_root(project_root)
-    refs_path = (
-        Path(args.references_file).resolve()
-        if args.references_file
-        else discover_references_file(project_root)
-    )
-    tables_manifest = Path(args.tables_manifest).resolve() if args.tables_manifest else None
-    manifest_output = (
-        Path(args.manifest_output).resolve()
-        if args.manifest_output
-        else default_manifest_path(project_root, args.figure_number_prefix, chapter_heading)
-    )
-    final_output = Path(args.output).resolve() if args.output else default_output_path(project_root, chapter_heading)
-
-    if not args.skip_chapter and chapter_path is None:
-        raise ValueError("未跳过章节插入时，必须提供 --chapter-file。")
-    if not args.keep_template_body and not args.skip_chapter and not chapter_heading:
-        raise ValueError("需要裁掉模板示例正文时，必须能确定章节标题。")
-
-    manifest_output.parent.mkdir(parents=True, exist_ok=True)
-    final_output.parent.mkdir(parents=True, exist_ok=True)
-
-    fill_frontmatter = ensure_sibling_script("fill_scau_frontmatter.py")
-    generate_manifest = ensure_sibling_script("generate_figure_manifest_from_dirs.py")
-    insert_markdown = ensure_sibling_script("insert_markdown_chapter.py")
-    insert_tables = ensure_sibling_script("insert_table_blocks.py")
-    insert_figures = ensure_sibling_script(
-        "insert_figure_blocks_com.py" if args.figure_backend == "word-com" else "insert_figure_blocks.py"
-    )
-    insert_refs = ensure_sibling_script("insert_reference_batch.py")
-    batch_ops = ensure_sibling_script("batch_word_ops.py")
-
-    current_docx = docx_path
-    temp_dir = Path(tempfile.mkdtemp(prefix="thesis-word-pipeline-"))
-
-    if not args.skip_frontmatter:
-        frontmatter_docx = temp_dir / "frontmatter_filled.docx"
-        frontmatter_source = current_docx if current_docx.exists() else official_template_docx
-        run_step(
-            "frontmatter",
-            [
-                sys.executable,
-                str(fill_frontmatter),
-                "--workspace",
-                str(project_root),
-                "--meta",
-                str(metadata_file),
-                "--template",
-                str(frontmatter_source),
-                "--output",
-                str(frontmatter_docx),
-            ],
-            project_root,
-        )
-        current_docx = frontmatter_docx
-
-    if not args.skip_figures:
-        manifest_cmd = [
-            sys.executable,
-            str(generate_manifest),
-            "--figures-root",
-            str(figures_root),
-            "--output",
-            str(manifest_output),
-        ]
-        if chapter_path is not None:
-            manifest_cmd.extend(["--chapter-file", str(chapter_path)])
-        if args.figure_number_prefix:
-            manifest_cmd.extend(["--number-prefix", args.figure_number_prefix])
-        if not args.skip_generate_figures:
-            manifest_cmd.append("--run-generators")
-        run_step("figure-manifest", manifest_cmd, project_root)
-
-    if not args.skip_chapter:
-        chapter_docx = temp_dir / "chapter_inserted.docx"
-        run_step(
-            "chapter",
-            [
-                sys.executable,
-                str(insert_markdown),
-                "--docx",
-                str(current_docx),
-                "--chapter-file",
-                str(chapter_path),
-                "--output",
-                str(chapter_docx),
-            ],
-            project_root,
-        )
-        current_docx = chapter_docx
-
-    if not args.skip_tables and tables_manifest is not None:
-        tables_docx = temp_dir / "tables_inserted.docx"
-        run_step(
-            "tables",
-            [
-                sys.executable,
-                str(insert_tables),
-                "--docx",
-                str(current_docx),
-                "--manifest",
-                str(tables_manifest),
-                "--fallback-template-docx",
-                str(official_template_docx),
-                "--output",
-                str(tables_docx),
-            ],
-            project_root,
-        )
-        current_docx = tables_docx
-
-    if not args.skip_figures:
-        figure_docx = temp_dir / "figures_inserted.docx"
-        figure_command = [
-            sys.executable,
-            str(insert_figures),
-            "--docx",
-            str(current_docx),
-            "--manifest",
-            str(manifest_output),
-            "--fallback-template-docx",
-            str(official_template_docx),
-            "--output",
-            str(figure_docx),
-        ]
-        if args.figure_backend == "word-com" and args.word_visible:
-            figure_command.append("--visible")
-        run_step("figures", figure_command, project_root)
-        current_docx = figure_docx
-
+    refs_path = None
     if not args.skip_references:
-        refs_docx = temp_dir / "references_inserted.docx"
-        run_step(
-            "references",
-            [
-                sys.executable,
-                str(insert_refs),
-                "--docx",
-                str(current_docx),
-                "--references-file",
-                str(refs_path),
-                "--output",
-                str(refs_docx),
-            ],
-            project_root,
-        )
-        current_docx = refs_docx
-
-    if not args.keep_template_body and not args.skip_chapter:
-        stripped_docx = temp_dir / "template_body_cleared.docx"
-        current_docx = strip_template_body_placeholders(current_docx, chapter_heading, stripped_docx)
-
-    final_output.write_bytes(current_docx.read_bytes())
+        refs_path = Path(args.references_file).resolve() if args.references_file else discover_references_file(project_root)
+        if not refs_path.is_file():
+            raise FileNotFoundError(f"参考文献源文件不存在: {refs_path}")
+    manifest_output = Path(args.manifest_output).resolve() if args.manifest_output else default_manifest_path(project_root, args.figure_number_prefix, chapter_heading)
+    final_output = Path(args.output).resolve() if args.output else default_output_path(project_root, chapter_heading)
+    current_docx = official_template_docx if bootstrap else docx_path
+    if final_output in {current_docx, docx_path, official_template_docx}:
+        raise ValueError("输出必须与输入工作稿/官方模板分开，以保留可恢复的原稿。")
+    editing = args.trim_template_body or not args.skip_frontmatter or not args.skip_chapter or not args.skip_figures or tables_manifest is not None or not args.skip_references
+    if editing:
+        source_document = Document(current_docx)
+        if source_document.element.xpath(".//w:ins | .//w:del | .//w:moveFrom | .//w:moveTo"):
+            raise RuntimeError("工作稿含未处理的修订；先单独确认/处理修订，再进行结构回灌。")
+    if not args.skip_figures:
+        manifest_output.parent.mkdir(parents=True, exist_ok=True)
+    final_output.parent.mkdir(parents=True, exist_ok=True)
+    temp_dir = Path(tempfile.mkdtemp(prefix="thesis-word-pipeline-"))
+    steps_run = []
+    template_body_trimmed = False
     contents_finalized = False
-    if sys.platform == "win32":
-        finalize_plan = temp_dir / "finalize_contents_plan.json"
-        finalized_docx = temp_dir / "contents_finalized.docx"
-        finalize_plan.write_text(
-            json.dumps(
-                [
-                    {
-                        "action": "ensure_page_break_before",
-                        "section": "english_abstract",
-                    },
-                    {
-                        "action": "normalize_body_paragraph_layout",
-                        "first_line_indent_chars": 2.0,
-                        "left_indent_chars": 0.0,
-                        "line_spacing": 18.0,
-                        "line_spacing_rule": 1,
-                        "alignment": 3,
-                    },
-                    {
-                        "action": "normalize_table_cells",
-                        "target": "all",
-                        "apply_fonts": False,
-                        "first_line_indent_chars": 0.0,
-                        "left_indent_chars": 0.0,
-                        "line_spacing": 18.0,
-                        "line_spacing_rule": 1,
-                        "alignment": 1,
-                    },
-                    {
-                        "action": "normalize_table_cells",
-                        "target": "abbreviation",
-                        "apply_fonts": True,
-                        "far_east_font": "宋体",
-                        "ascii_font": "Times New Roman",
-                        "size": 12,
-                        "first_line_indent_chars": 0.0,
-                        "left_indent_chars": 0.0,
-                        "line_spacing": 18.0,
-                        "line_spacing_rule": 1,
-                        "alignment": 1,
-                    },
-                    {
-                        "action": "normalize_tail_section_fonts",
-                        "sections": ["references", "acknowledgements"],
-                    },
-                    {
-                        "action": "finalize_contents",
-                        "mode": "full",
-                        "update_fields": True,
-                    }
-                ],
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        run_step(
-            "contents-finalize",
-            [
-                sys.executable,
-                str(batch_ops),
-                str(final_output),
-                str(finalize_plan),
-                "--output",
-                str(finalized_docx),
-            ],
-            project_root,
-        )
-        final_output.write_bytes(finalized_docx.read_bytes())
-        contents_finalized = True
 
-    emit_text(
-        json.dumps(
-            {
-                "output": str(final_output),
-                "manifest": str(manifest_output) if not args.skip_figures else None,
-                "base_docx": str(docx_path),
-                "frontmatter_inserted": not args.skip_frontmatter,
-                "chapter_inserted": not args.skip_chapter,
-                "tables_inserted": tables_manifest is not None and not args.skip_tables,
-                "figures_inserted": not args.skip_figures,
-                "figure_backend": None if args.skip_figures else args.figure_backend,
-                "references_inserted": not args.skip_references,
-                "figure_generators_rerun": not args.skip_generate_figures and not args.skip_figures,
-                "chapter_heading": chapter_heading,
-                "contents_finalized": contents_finalized,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+    def execute(step_name: str, script_name: str, options: list[str], next_docx: Path | None = None) -> None:
+        nonlocal current_docx
+        run_step(step_name, [sys.executable, str(ensure_sibling_script(script_name)), *options], project_root)
+        steps_run.append(step_name)
+        if next_docx is not None:
+            current_docx = next_docx
+
+    try:
+        if args.trim_template_body or (bootstrap and not args.keep_template_body and not args.skip_chapter):
+            current_docx = strip_template_body_placeholders(current_docx, official_template_docx, temp_dir / "template_body_cleared.docx")
+            template_body_trimmed = True
+            steps_run.append("trim-template-body")
+        if not args.skip_frontmatter:
+            target = temp_dir / "frontmatter_filled.docx"
+            execute("frontmatter", "fill_scau_frontmatter.py", ["--workspace", str(project_root), "--meta", str(metadata_file), "--template", str(current_docx), "--output", str(target)], target)
+        if not args.skip_figures:
+            options = ["--figures-root", str(figures_root), "--output", str(manifest_output)]
+            if chapter_path is not None:
+                options.extend(["--chapter-file", str(chapter_path)])
+            if args.figure_number_prefix:
+                options.extend(["--number-prefix", args.figure_number_prefix])
+            if not args.skip_generate_figures:
+                options.append("--run-generators")
+            execute("figure-manifest", "generate_figure_manifest_from_dirs.py", options)
+        if not args.skip_chapter:
+            target = temp_dir / "chapter_inserted.docx"
+            options = ["--docx", str(current_docx), "--chapter-file", str(chapter_path), "--output", str(target)]
+            if official_template_docx is not None:
+                options.extend(["--fallback-template-docx", str(official_template_docx)])
+            if args.replace_media:
+                options.append("--replace-media")
+            if args.replace_tables:
+                options.append("--replace-tables")
+            execute("chapter", "insert_markdown_chapter.py", options, target)
+        if tables_manifest is not None:
+            target = temp_dir / "tables_inserted.docx"
+            options = ["--docx", str(current_docx), "--manifest", str(tables_manifest), "--output", str(target)]
+            if official_template_docx is not None:
+                options.extend(["--fallback-template-docx", str(official_template_docx)])
+            execute("tables", "insert_table_blocks.py", options, target)
+        if not args.skip_figures:
+            target = temp_dir / "figures_inserted.docx"
+            options = ["--docx", str(current_docx), "--manifest", str(manifest_output), "--output", str(target)]
+            if official_template_docx is not None:
+                options.extend(["--fallback-template-docx", str(official_template_docx)])
+            if args.figure_backend == "word-com" and args.word_visible:
+                options.append("--visible")
+            execute("figures", "insert_figure_blocks_com.py" if args.figure_backend == "word-com" else "insert_figure_blocks.py", options, target)
+        if not args.skip_references:
+            target = temp_dir / "references_inserted.docx"
+            execute("references", "insert_reference_batch.py", ["--docx", str(current_docx), "--references-file", str(refs_path), "--output", str(target)], target)
+        if args.finalize_contents:
+            plan = temp_dir / "finalize_contents_plan.json"
+            target = temp_dir / "contents_finalized.docx"
+            plan.write_text(json.dumps([{"action": "finalize_contents", "mode": "full", "update_fields": True}], ensure_ascii=False, indent=2), encoding="utf-8")
+            execute("contents-finalize", "batch_word_ops.py", [str(current_docx), str(plan), "--output", str(target)], target)
+            contents_finalized = True
+        publish_output(current_docx, final_output)
+    except Exception as exc:
+        detail = json.loads(str(exc)) if isinstance(exc, SkillStepError) else {"step": "runner", "error": str(exc)}
+        detail.update({"recovery_dir": str(temp_dir), "last_successful_docx": str(current_docx), "output_published": False, "input_docx_preserved": True})
+        raise SkillStepError(json.dumps(detail, ensure_ascii=False, indent=2)) from exc
+    else:
+        shutil.rmtree(temp_dir)
+
+    emit_text(json.dumps({
+        "output": str(final_output),
+        "manifest": str(manifest_output) if not args.skip_figures else None,
+        "base_docx": str(official_template_docx if bootstrap else docx_path),
+        "frontmatter_inserted": not args.skip_frontmatter,
+        "chapter_inserted": not args.skip_chapter,
+        "tables_inserted": tables_manifest is not None,
+        "figures_inserted": not args.skip_figures,
+        "figure_backend": None if args.skip_figures else args.figure_backend,
+        "references_inserted": not args.skip_references,
+        "figure_generators_rerun": not args.skip_generate_figures and not args.skip_figures,
+        "chapter_heading": chapter_heading,
+        "template_body_trimmed": template_body_trimmed,
+        "contents_finalized": contents_finalized,
+        "contents_refresh_required": editing and not contents_finalized,
+        "input_docx_preserved": True,
+        "steps_run": steps_run,
+    }, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -328,6 +328,8 @@ def paragraph_format_signature(paragraph) -> dict[str, object]:
         "line_spacing_rule": getattr(paragraph_format, "LineSpacingRule", None),
         "line_spacing": getattr(paragraph_format, "LineSpacing", None),
         "character_unit_first_line_indent": getattr(paragraph_format, "CharacterUnitFirstLineIndent", None),
+        "first_line_indent_points": getattr(paragraph_format, "FirstLineIndent", None),
+        "font_size_points": getattr(paragraph.Range.Font, "Size", None),
         "character_unit_left_indent": getattr(paragraph_format, "CharacterUnitLeftIndent", None),
         "page_break_before": getattr(paragraph_format, "PageBreakBefore", None),
     }
@@ -345,7 +347,7 @@ def numeric_matches(observed: object, expected: float, tolerance: float = 0.12) 
 def paragraph_has_explicit_page_break(paragraph) -> bool:
     paragraph_format = paragraph.Range.ParagraphFormat
     page_break_before = getattr(paragraph_format, "PageBreakBefore", None)
-    if page_break_before not in (0, False, None, ""):
+    if page_break_before in (-1, True):
         return True
     text = str(paragraph.Range.Text)
     return "\f" in text or "\x0c" in text
@@ -761,7 +763,7 @@ def english_abstract_page_break_check(
     *,
     english_title_item: dict[str, object] | None,
 ) -> dict[str, object]:
-    expected_note = "中文摘要与英文摘要之间应使用明确分页符，英文题目所在段落应以新页起始。"
+    expected_note = "按模板检查英文摘要独立页；段前分页、分页符或分页型分节均可，须结合渲染确认。"
     if english_title_item is None:
         return {
             "status": "manual_confirm",
@@ -779,7 +781,8 @@ def english_abstract_page_break_check(
 
     has_break = any(paragraph_has_explicit_page_break(paragraph) for paragraph in candidates)
     return {
-        "status": "confirmed" if has_break else "suggested",
+        "status": "confirmed" if has_break else "manual_confirm",
+        "scope": "template_layout_signal",
         "paragraph_text": english_title_item["text"],
         "expected": expected_note,
         "observed": {
@@ -796,7 +799,7 @@ def body_first_line_indent_check(
     toc_end: int,
     references_title_item: dict[str, object] | None,
 ) -> dict[str, object]:
-    expected_note = "正文段落首行缩进应精确为 2 个字符。"
+    expected_note = "正文首行缩进按批注51为两字距；接受字符单位或与当前小四字体等效的磅值。"
     body_end = int(references_title_item["paragraph"].Range.Start) if references_title_item else float("inf")
     checked = 0
     mismatches: list[dict[str, object]] = []
@@ -815,13 +818,21 @@ def body_first_line_indent_check(
             continue
         signature = paragraph_format_signature(item["paragraph"])
         checked += 1
-        if not numeric_matches(signature.get("character_unit_first_line_indent"), 2.0):
+        char_indent = signature.get("character_unit_first_line_indent")
+        point_indent = signature.get("first_line_indent_points")
+        font_size = signature.get("font_size_points")
+        char_match = numeric_matches(char_indent, 2.0, tolerance=0.01)
+        point_match = (numeric_matches(font_size, 12.0, tolerance=0.1)
+                       and numeric_matches(point_indent, 24.0, tolerance=0.1))
+        if not (char_match or point_match):
             mismatches.append(
                 {
                     "paragraph_index": item["index"],
                     "text": text,
                     "character_unit_first_line_indent": signature.get("character_unit_first_line_indent"),
                     "character_unit_left_indent": signature.get("character_unit_left_indent"),
+                    "first_line_indent_points": point_indent,
+                    "font_size_points": font_size,
                 }
             )
     return {
@@ -834,7 +845,7 @@ def body_first_line_indent_check(
 
 
 def table_cells_center_check(document) -> dict[str, object]:
-    expected_note = "表格内容段落应居中对齐。"
+    expected_note = "批注57要求正文数据表内容居中；此扫描未区分布局表，候选项需确认表格用途。"
     checked = 0
     mismatches: list[dict[str, object]] = []
     for table_index in range(1, int(document.Tables.Count) + 1):
@@ -859,7 +870,8 @@ def table_cells_center_check(document) -> dict[str, object]:
             "note": "文档中未检测到可见表格内容段落。",
         }
     return {
-        "status": "confirmed" if not mismatches else "suggested",
+        "status": "confirmed" if not mismatches else "manual_confirm",
+        "scope": "table_role_not_classified",
         "expected": expected_note,
         "paragraphs_checked": checked,
         "mismatch_count": len(mismatches),
@@ -873,7 +885,7 @@ def abbreviation_table_format_check(
     *,
     contents_title_item: dict[str, object] | None,
 ) -> dict[str, object]:
-    expected_note = "英文缩略词（符号表）中的表格内容应为宋体 + Times New Roman 小四号、1.5 倍行距、居中对齐。"
+    expected_note = "批注43要求缩略词表宋体 + Times New Roman 小四号、居中；批注未指定行距。"
     heading_item = find_first(paragraphs, r"^英文缩略词（符号表）$")
     if heading_item is None:
         return {
@@ -912,10 +924,9 @@ def abbreviation_table_format_check(
         checked += 1
         segment_checks = [
             all(size_matches(segment.get("size"), 12) for segment in visible_segments),
-            any(contains_font(segment, "宋体", "far_east_font") for segment in chinese_segments) if chinese_segments else True,
-            any(contains_font(segment, "Times New Roman", "ascii_font") for segment in western_segments) if western_segments else True,
+            all(contains_font(segment, "宋体", "far_east_font") for segment in chinese_segments),
+            all(contains_font(segment, "Times New Roman", "ascii_font") for segment in western_segments),
             int(signature.get("alignment") or -1) == WD_ALIGN_PARAGRAPH_CENTER,
-            int(signature.get("line_spacing_rule") or -1) == WD_LINE_SPACE_1PT5,
             numeric_matches(signature.get("character_unit_first_line_indent"), 0.0),
         ]
         if not all(segment_checks):
@@ -1076,7 +1087,7 @@ def inspect_document(input_path: Path) -> dict[str, object]:
             "judgement_basis": {
                 "word_character_format": "confirmed",
                 "rendered_layout": "manual_confirm",
-                "note": "本脚本用于检查字体、字号、加粗边界、目录特殊条目和末尾模块样式，不替代页面版式审查。",
+                "note": "字符检查含代表段落/主导格式抽样；confirmed仅代表该检测项。段落行距与缩进另列扫描数量；全文内容、规则原文和渲染版式仍需复核。",
             },
             "checks": {
                 "abstract_title_font": paragraph_check(
@@ -1093,13 +1104,11 @@ def inspect_document(input_path: Path) -> dict[str, object]:
                 "english_author_format": paragraph_check(
                     english_author_item,
                     expected_ascii="Times New Roman",
-                    expected_bold=False,
                     expected_note="英文作者姓名使用 Times New Roman，且不作为显式加粗项。",
                 ),
                 "english_affiliation_format": paragraph_check(
                     english_affiliation_item,
                     expected_ascii="Times New Roman",
-                    expected_bold=False,
                     expected_note="英文作者单位使用 Times New Roman，且不作为显式加粗项。",
                 ),
                 "abstract_label_body_format": inline_label_body_check(

@@ -9,17 +9,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from docx import Document
+from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
 
 from word_template_utils import (
     apply_three_line_table_format,
     collapse_ws,
+    contents_paragraph_elements,
     default_output_path,
+    ensure_output_copy,
     delete_range,
     donor_key_for_paragraph_text,
     find_heading_donors,
     find_next_section_anchor,
     find_paragraph_by_regex,
-    find_paragraph_by_text,
     format_continued_table_caption,
     insert_paragraph_after,
     insert_paragraph_before,
@@ -42,16 +45,16 @@ class MdBlock:
 
 
 HEADING_RE = re.compile(r"^(#{1,4})\s+(.+?)\s*$")
-TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$")
+TABLE_SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
 
 
 def parse_md_row(line: str) -> list[str]:
     text = line.strip()
     if text.startswith("|"):
         text = text[1:]
-    if text.endswith("|"):
+    if text.endswith("|") and not text.endswith(r"\|"):
         text = text[:-1]
-    return [cell.strip() for cell in text.split("|")]
+    return [cell.strip().replace(r"\|", "|") for cell in re.split(r"(?<!\\)\|", text)]
 
 
 def is_table_start(lines: list[str], index: int) -> bool:
@@ -59,14 +62,18 @@ def is_table_start(lines: list[str], index: int) -> bool:
         return False
     current = lines[index]
     nxt = lines[index + 1]
-    return "|" in current and TABLE_SEPARATOR_RE.match(nxt) is not None
+    separator = parse_md_row(nxt)
+    return "|" in current and bool(separator) and all(TABLE_SEPARATOR_CELL_RE.fullmatch(cell) for cell in separator)
 
 
 def normalize_md_heading(level: int, text: str) -> str:
     collapsed = collapse_ws(text)
     if level == 1:
-        return normalize_heading_text(collapsed)
-    return collapsed
+        collapsed = normalize_heading_text(collapsed)
+    match = re.fullmatch(r"(\d+(?:\.\d+)*)\s+(.+)", collapsed)
+    if match is None or len(match.group(1).split(".")) != level:
+        raise ValueError(f"Heading level {level} requires a matching number: {text}")
+    return f"{match.group(1)}  {match.group(2)}"
 
 
 def parse_markdown(path: Path) -> list[MdBlock]:
@@ -91,6 +98,9 @@ def parse_markdown(path: Path) -> list[MdBlock]:
             index += 1
             continue
 
+        if re.match(r"^(?:`{3,}|~{3,}|#{5,}\s)", stripped) or re.search(r"!\[[^\]]*\]\(", stripped):
+            raise ValueError(f"Unsupported Markdown at line {index + 1}; use a figure manifest or a supported heading/paragraph/table.")
+
         heading_match = HEADING_RE.match(line)
         if heading_match:
             flush_paragraph()
@@ -103,10 +113,16 @@ def parse_markdown(path: Path) -> list[MdBlock]:
         if is_table_start(lines, index):
             flush_paragraph()
             header = parse_md_row(lines[index])
+            separator = parse_md_row(lines[index + 1])
+            if len(header) != len(separator):
+                raise ValueError(f"Table header/separator column mismatch at line {index + 1}.")
             index += 2
             rows = [header]
-            while index < len(lines) and "|" in lines[index]:
-                rows.append(parse_md_row(lines[index]))
+            while index < len(lines) and "|" in lines[index] and lines[index].strip():
+                row = parse_md_row(lines[index])
+                if len(row) != len(header):
+                    raise ValueError(f"Table has {len(row)} columns at line {index + 1}; expected {len(header)}.")
+                rows.append(row)
                 index += 1
             blocks.append(MdBlock(kind="table", rows=rows))
             continue
@@ -115,7 +131,40 @@ def parse_markdown(path: Path) -> list[MdBlock]:
         index += 1
 
     flush_paragraph()
+    validate_chapter_blocks(blocks)
     return blocks
+
+
+def validate_chapter_blocks(blocks: list[MdBlock]) -> None:
+    if not blocks or blocks[0].kind != "heading" or blocks[0].level != 1:
+        raise ValueError("A chapter draft must start with one numbered level-1 heading.")
+    chapter_number = (blocks[0].text or "").split()[0]
+    seen_numbers: set[str] = set()
+    for block in blocks:
+        if block.kind != "heading":
+            continue
+        number = (block.text or "").split()[0]
+        if number in seen_numbers:
+            raise ValueError(f"Duplicate heading number: {number}")
+        if seen_numbers and block.level == 1:
+            raise ValueError("Import one chapter per run; multiple level-1 headings are not supported.")
+        if number.split(".")[0] != chapter_number or any(int(part) < 1 for part in number.split(".")):
+            raise ValueError(f"Heading {number} does not belong to chapter {chapter_number}.")
+        seen_numbers.add(number)
+
+
+def required_donor_keys(blocks: list[MdBlock]) -> list[str]:
+    keys: set[str] = set()
+    for block in blocks:
+        if block.kind == "heading":
+            keys.add(f"heading{block.level}")
+        elif block.kind == "paragraph":
+            keys.add(donor_key_for_paragraph_text(block.text or ""))
+        elif block.kind == "table_block":
+            keys.update(["body", "table_caption"])
+            if block.note:
+                keys.add("note")
+    return sorted(keys)
 
 
 def combine_table_blocks(blocks: list[MdBlock]) -> list[MdBlock]:
@@ -174,18 +223,52 @@ def split_rows(rows: list[list[str]]) -> list[list[list[str]]]:
 
 def find_insertion_anchor(document: Document, chapter_title: str | None, insert_before_regex: str) -> tuple[object | None, bool]:
     if chapter_title:
-        current = find_paragraph_by_text(document, chapter_title)
+        current = find_existing_chapter(document, chapter_title)
         if current is not None:
             blocks = list(iter_block_items(document))
             current_index = next(
                 idx for idx, block in enumerate(blocks) if same_block(block, current)
             )
-            return find_next_section_anchor(blocks, current_index), True
+            anchor = find_next_section_anchor(blocks, current_index)
+            if anchor is None:
+                raise RuntimeError("No following chapter/back-matter boundary was found; refusing an open-ended chapter replacement.")
+            return anchor, True
 
-    anchor = find_paragraph_by_regex(document, insert_before_regex, flags=re.IGNORECASE)
+    anchor = find_paragraph_by_regex(document, insert_before_regex, flags=re.IGNORECASE, skip_contents=True)
     if anchor is None:
         raise RuntimeError(f"Could not find insertion anchor matching regex: {insert_before_regex}")
     return anchor, False
+
+
+def find_existing_chapter(document: Document, chapter_title: str) -> Paragraph | None:
+    chapter_number = normalize_heading_text(chapter_title).split()[0]
+    matches = []
+    contents = contents_paragraph_elements(document)
+    for paragraph in document.paragraphs:
+        if paragraph._p in contents:
+            continue
+        text = normalize_heading_text(paragraph.text)
+        if re.match(rf"^{re.escape(chapter_number)}\s+\S", text):
+            matches.append(paragraph)
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple body headings for chapter {chapter_number}; resolve duplicate chapters before replacement.")
+    return matches[0] if matches else None
+
+
+def validate_replacement_range(document: Document, heading: Paragraph, end_anchor, blocks: list[MdBlock], *, replace_media: bool = False, replace_tables: bool = False) -> None:
+    children = list(document.element.body)
+    start = children.index(heading._p)
+    end = children.index(end_anchor._p)
+    protected = {qn(f"w:{name}") for name in ("fldChar", "fldSimple", "instrText", "sectPr", "altChunk", "object", "footnoteReference", "endnoteReference")}
+    protected.update({qn("m:oMath"), qn("m:oMathPara")})
+    source_has_tables = any(block.kind in {"table", "table_block"} for block in blocks)
+    for element in children[start:end]:
+        if any(node.tag in protected for node in element.iter()):
+            raise RuntimeError("The chapter range contains fields, section boundaries, embedded objects, footnotes, or equations; use a targeted Word edit to preserve them.")
+        if not replace_media and any(node.tag in {qn("w:drawing"), qn("w:pict")} for node in element.iter()):
+            raise RuntimeError("The chapter range contains existing media; verify a complete reconstruction manifest before using --replace-media.")
+        if not replace_tables and not source_has_tables and any(node.tag == qn("w:tbl") for node in element.iter()):
+            raise RuntimeError("The chapter range contains tables absent from the Markdown; verify a complete table reconstruction manifest before using --replace-tables.")
 
 
 def render_table(table, rows: list[list[str]]) -> None:
@@ -204,36 +287,37 @@ def insert_table_block_before(document: Document, anchor, block: MdBlock, donors
     rows = block.rows or []
     if not rows:
         raise RuntimeError("Markdown table block has no rows.")
-    current_anchor = anchor
+    current_anchor = insert_paragraph_before(anchor, donors["body"], "")
     if block.note:
         current_anchor = insert_paragraph_before(current_anchor, donors["note"], block.note)
     for index, segment in reversed(list(enumerate(split_rows(rows)))):
         caption_text = block.text or ""
         if index > 0:
             caption_text = format_continued_table_caption(caption_text)
-        current_anchor = insert_paragraph_before(current_anchor, donors["table_caption"], caption_text)
         table = insert_table_before(document, current_anchor, rows=len(segment), cols=len(segment[0]))
         render_table(table, segment)
-        current_anchor = table
-    return current_anchor
+        current_anchor = insert_paragraph_before(table, donors["table_caption"], caption_text)
+        current_anchor.paragraph_format.keep_with_next = True
+    return insert_paragraph_before(current_anchor, donors["body"], "")
 
 
 def insert_table_block_after(document: Document, anchor, block: MdBlock, donors: dict[str, object]):
     rows = block.rows or []
     if not rows:
         raise RuntimeError("Markdown table block has no rows.")
-    current_anchor = anchor
+    current_anchor = insert_paragraph_after(anchor, donors["body"], "")
     for index, segment in enumerate(split_rows(rows)):
         caption_text = block.text or ""
         if index > 0:
             caption_text = format_continued_table_caption(caption_text)
         current_anchor = insert_paragraph_after(current_anchor, donors["table_caption"], caption_text)
+        current_anchor.paragraph_format.keep_with_next = True
         table = insert_table_after(document, current_anchor, rows=len(segment), cols=len(segment[0]))
         render_table(table, segment)
         current_anchor = table
     if block.note:
         current_anchor = insert_paragraph_after(current_anchor, donors["note"], block.note)
-    return current_anchor
+    return insert_paragraph_after(current_anchor, donors["body"], "")
 
 
 def insert_block_before(document: Document, anchor, block: MdBlock, donors: dict[str, object]):
@@ -278,6 +362,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Insert a Markdown chapter into the thesis Word template.")
     parser.add_argument("--docx", required=True, help="Path to the input .docx file")
     parser.add_argument("--chapter-file", required=True, help="Markdown file containing the chapter draft")
+    parser.add_argument("--fallback-template-docx", help="Official template to supply only missing donor styles.")
+    parser.add_argument("--replace-media", action="store_true", help="Allow removal of existing chapter images only after verifying their complete reconstruction manifest.")
+    parser.add_argument("--replace-tables", action="store_true", help="Allow removal of existing tables missing from Markdown only after verifying a complete table reconstruction manifest.")
     parser.add_argument("--output", help="Output .docx path. Defaults to overwrite-safe sibling path.")
     parser.add_argument(
         "--insert-before-regex",
@@ -289,6 +376,8 @@ def main() -> None:
     docx_path = Path(args.docx).resolve()
     chapter_path = Path(args.chapter_file).resolve()
     output_path = Path(args.output).resolve() if args.output else default_output_path(docx_path, "_章节插入")
+    ensure_output_copy(output_path, docx_path, chapter_path,
+                       Path(args.fallback_template_docx).resolve() if args.fallback_template_docx else None)
 
     blocks = combine_table_blocks(parse_markdown(chapter_path))
     if not blocks:
@@ -299,13 +388,17 @@ def main() -> None:
         chapter_title = blocks[0].text
 
     document = Document(docx_path)
-    donors = find_heading_donors(document)
+    if document.element.xpath(".//w:ins | .//w:del | .//w:moveFrom | .//w:moveTo"):
+        raise RuntimeError("Resolve tracked revisions separately before replacing chapter structure.")
+    fallback_document = Document(Path(args.fallback_template_docx).resolve()) if args.fallback_template_docx else None
+    donors = find_heading_donors(document, required=required_donor_keys(blocks), fallback_document=fallback_document)
     anchor, replacing_existing = find_insertion_anchor(document, chapter_title, args.insert_before_regex)
 
     if replacing_existing and chapter_title:
-        existing_heading = find_paragraph_by_text(document, chapter_title)
+        existing_heading = find_existing_chapter(document, chapter_title)
         if existing_heading is None:
             raise RuntimeError(f"Expected to find existing chapter heading: {chapter_title}")
+        validate_replacement_range(document, existing_heading, anchor, blocks, replace_media=args.replace_media, replace_tables=args.replace_tables)
         delete_range(document, existing_heading, anchor)
 
     if anchor is not None:

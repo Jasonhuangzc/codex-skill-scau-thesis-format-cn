@@ -1,129 +1,62 @@
-# Template Comment Rules
+# Template Comment Audit Rules
 
-Use this file for final Word-format audit when the school template comments matter more than generic thesis conventions.
+本页按现有 2024 `附件6` 批注整理记录列执行重点。ID 和整理文字见 `references/scau-template-comments.md`，证据与完整边界见 `references/format-rules.md`。不能替代尚未导入的官方 DOC，也不能把模板示例或脚本默认值升级为明文规定。
 
-These rules come directly from the 50 Word comments in the official 2024 `附件6.华南农业大学本科毕业论文（设计）格式模板.doc` under `assets/official-2024/`. Treat them as high-priority final checks because they are teacher-visible and easy to spot.
+## 1. 前置证据
 
-## 1. Front matter and abstracts
+- 校验原始文件与 `assets/official-2024/manifest.json` 的 SHA256，定位批注 ID。
+- 未读取原始 DOC 时，记录 `rule_verification: repository_transcription_only`，继续检查但披露限制。
+- 批注段落序号只匹配固定转换模板；重新转换/回灌后按文本和结构定位，不把旧序号当论文实际位置。
 
-- `摘要` title:
-  - uses `摘        要`
-  - title characters keep `4` character-spacing slots
-  - uses `黑体`
-- `关键词`:
-  - the label `关键词：` uses `黑体`
-  - the following keyword content returns to body-style fonts
-  - Chinese keywords are separated by full-width semicolons
-  - the last keyword has no punctuation
-- `English Title`:
-  - uses `Times New Roman`
-  - is explicitly bold
-  - each content word starts with an uppercase letter
-- English author line:
-  - uses `Times New Roman`
-  - is not explicitly bold in the template comment
-- English affiliation line:
-  - uses `Times New Roman`
-  - is not explicitly bold in the template comment
-- `Abstract`:
-  - the label `Abstract:` is explicitly bold
-  - the body text immediately after `Abstract:` is not bold
-  - both label and body use `Times New Roman`
-  - the English abstract starts on a new page with an explicit page break
-  - second and later paragraphs use a two-character first-line indent
-  - comma, period, colon, and semicolon are followed by one half-width space
-- `Key words`:
-  - the label `Key words:` is explicitly bold
-  - the following keyword content is not bold
-  - both label and body use `Times New Roman`
-  - separated by half-width semicolons
-  - the last keyword has no punctuation
-  - each content word starts with an uppercase letter
-- statement pages do not show page numbers
+## 2. 前置模块与摘要
 
-## 2. Contents and title spacing
+| 来源 | 检查重点 |
+| --- | --- |
+| `C0–C8` | 论文/设计类型、题名、元数据，学院/专业全称，中西文字体与字号。 |
+| `C26` | 声明页无页码；需看页脚和渲染页面。 |
+| `C28–C30` | 中文摘要标题 4 字距；正文 300–600 字且不引参考文献；中文关键词 3–5 个、全角分号、末尾无标点；标签黑体、内容正文配对字体。 |
+| `C31–C33` | 英文题名 TNR 四号加粗、实词首字母大写；姓名/单位 TNR 小四居中；未写加粗不能解读为禁止加粗。 |
+| `C34` | `Abstract:` 标签加粗；正文 TNR 小四、两端对齐、1.5 倍行距，第二段起首行缩进 2 字距，英文标点空格。 |
+| `C35` | `Key words:` 加粗，内容 TNR 小四、半角分号、末尾无标点、实词首字母大写。 |
+| `C43` | 若使用缩略词表，三线表，标题黑体四号居中，内容宋体/TNR 小四居中。批注未记表内 1.5 倍行距。 |
 
-- `目录` title uses `目        录`
-- contents display down to level `3`
-- contents keep:
-  - heading numbers left aligned
-  - page numbers right aligned
-  - leader dots
-- refresh contents after heading or pagination edits
-- the final TOC repair order is:
-  - update fields
-  - clean TOC `参考文献` and `致谢` entries
-  - normalize TOC Chinese characters to `宋体`
-  - normalize TOC English, digits, and `.` to `Times New Roman`
-- in the contents list:
-  - `参考文献` does not insert character spacing
-  - `致谢` does not insert character spacing
-  - if the TOC was just regenerated from spaced heading text, clean these two entries again before final export
-  - the grading sheet does not enter the contents
-- in the main heading line:
-  - `参  考  文  献` keeps one-character spacing between each character
-  - `致        谢` keeps the template spacing in the heading line
+英文摘要独立成页按模板页面验证；显式分页符是默认实现之一，`pageBreakBefore`/分节符也可等效。不能仅因缺少 `\f` 判违反批注。当前批注没有英文摘要字数、独立英文关键词数量、题名长度阈值。
 
-## 3. Heading and body format
+## 3. 目录与字距
 
-- level-1 to level-4 headings all require one character space between the number and the title text
--正文 keeps:
-  - Chinese `宋体`
-  - western text `Times New Roman`
-  - small-four size
-  - first-line indent of two characters
-  - `1.5` line spacing
-  - treat `1.8` or similar first-line-indent values as format defects
-- do not auto-judge `加粗` only from the use of `黑体` or `楷体`
-- only enforce bold as a hard rule when the template comment explicitly says `加粗`
+- `C44`：目录标题空 4 字距、黑体四号；条目小四、到 3 级，页码右对齐、有前导符；正文修改后刷新。
+- `C45`：目录中的 `参考文献`/`致谢` 无字间空格，成绩评定表不进入目录。
+- `C121`：正文参考文献标题字间空 1 字距。
+- `C143`：正文致谢标题空 4 字距。
 
-## 4. Figure, table, formula, and footnote rules
+推荐顺序是字段更新、目录特殊条目清理、模板字体恢复、导出复查，属于 `workflow_default`。只改分页可更新页码，题名/层级变更需完整刷新。目录字体配对和左对齐另从实际模板确认，不能说 `C44` 明文规定了摘录没有的细节。
 
-- figures and tables keep one blank line above and below the block
-- figure numbering starts at `1` and is continuous
-- figure caption is below the figure
-- figure note is below the caption
-- figure and its main caption must not split across pages
-- if a figure cannot fit at the bottom of the page, move the whole figure block to the next page
-- subfigures use `(a)`, `(b)`, `(c)` and the subfigure name sits directly below its own panel
-- the main figure title sits centered below all panels
-- tables use a three-line-table style
-- table titles sit above the table
-- table notes sit below the table
-- continued tables repeat the table number and the header row
-- table-cell paragraphs are centered
-- the `英文缩略词（符号表）` table uses `宋体 + Times New Roman` small-four, centered paragraphs, and `1.5` line spacing
-- formulas are centered
-- formula numbers are right aligned and do not use leader dashes
-- footnotes use continuous numbering
+字距是排版单位，不把示例 ASCII 空格数当唯一路径；宋体/黑体/楷体也不等于 Word Bold 属性。
 
-## 5. Citation and bibliography high-risk punctuation
+## 4. 正文、图表、公式
 
-- citation outer parentheses use full-width Chinese brackets
-- punctuation inside citation parentheses uses half-width symbols
-- commas and semicolons inside citation parentheses are followed by one half-width space
-- multiple citations at one location:
-  - Chinese first
-  - foreign-language references second
-- bibliography title line uses `参  考  文  献`
-- bibliography entries:
-  - no numbering
-  - hanging indent of two characters
-  - Chinese references first, foreign references later
-  - Chinese entries sorted by the first author's surname in Hanyu Pinyin order
-  - western-language and Russian entries sorted by the first author's surname in alphabetical order
-  - body entries use `宋体 + Times New Roman` small-four
-- bibliography punctuation uses half-width symbols
-- after comma, period, colon, and semicolon, keep one half-width space
-- page ranges use the short hyphen `-`
-- adjacent brackets such as `) [` keep one half-width space
-- URLs do not add spaces around punctuation
-- two-character Chinese names do not contain an internal space
-- when there are more than three authors, list the first three and then add `等` or `et al.`
-- `致谢` heading line keeps template spacing, but the acknowledgement body returns to `宋体 + Times New Roman` small-four
+- `C47/C50/C62/C71`：标题 1–4 级字体、字号、1.5 倍行距、题序后 1 字距按对照表；不强迫使用全部层级。
+- `C51`：正文宋体/TNR 小四、首行缩进 2 字距、1.5 倍行距；报告读取单位与误差，等效 twips/磅值核实后判断。
+- `C56–C58`：表上标题、表下备注，正文表连续编号，三线表，表内五号居中单倍，备注小五 1.5 倍；上/下与正文各空一行。
+- `C67/C68`：图下标题、其下图注，正文图连续编号，上/下与正文各空一行，图与图题不可拆页；引用图列来源。
+- `C72`：分图 `(a)/(b)/(c)` 和分图名，主图名在全部分图下方正中。
+- `C78`：续表重复表号，各页重复表头。
+- `C64`：公式居中连续编号，编号右端无虚线；“可设最小值 20 磅”不是必须。
+- `C66`：脚注全文连续编号，小五单倍。
+- `C140`：附录图表公式独立序列，不并入正文连续性检查。
 
-## 6. How to use these rules
+位置、拆页、可读性、三线表和续表需渲染复查。表格统一居中检查限适用的数据/缩略词表；封面布局表、特殊复杂表先人工确认。
 
-- Use these rules before broad style normalization when the user asks for final Word-format review.
-- If a conflict appears between a generic convention and these template comments, prefer the template comments unless the user or supervisor has fixed another house rule.
-- If the template comment covers only an example and not a hard rule, mark the result as `以模板为准` rather than inventing a broader requirement.
+## 5. 文献与致谢
+
+- `C52/C53`：正文两作者“和”/“and”，三人及以上第一作者加“等”/“et al.”。
+- `C54`：引用外圆括号全角，内部标点半角；逗号/分号后半角空格；同处中文在前外文在后，组内年份递增。
+- `C121`：文后不编号、悬挂缩进 2 字距、中文在前外文在后、宋体/TNR 小四。
+- `C124–C128/C133–C135`：标点空格、作者截断、双字姓名、期卷号、短横线页码、括号间距、URL、版次按批注表。
+- `C143/C144`：致谢标题与正文分开检查；正文宋体/TNR 小四、两端对齐、首行缩进 2 字距、1.5 倍行距。
+
+修复只作用于确定的引文/条目，保护 URL/DOI/小数/缩写。姓氏排序、俄文/其他语言次序不在上述批注的完整内容里，须在 PDF 定位后执行；脚本的外文合并排序不能充当学校依据。
+
+## 6. 闭环
+
+每项写批注 ID、证据状态、论文位置、观察事实。修复后检查标签/正文、标题/条目边界及目录特殊项，再看页面。样本匹配只能说明样本；无原始文件或无渲染时保留人工项，不宣布全文验收通过。
