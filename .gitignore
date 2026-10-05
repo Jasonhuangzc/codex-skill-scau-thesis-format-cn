@@ -7,6 +7,8 @@ scau-thesis-format-cn/assets/template/*
 
 scau-thesis-format-cn/scripts/__pycache__/
 scau-thesis-format-cn/**/*.pyc
+__pycache__/
+*.py[cod]
 
 tmp/
 work/

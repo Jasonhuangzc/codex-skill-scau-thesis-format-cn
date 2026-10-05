@@ -253,20 +253,25 @@ def build_section_audit(
         extra_patterns = PLACEHOLDER_RULES.get(key, None)
         if has_placeholder(section_texts.get(key, ""), extra_patterns):
             audits[key] = {
-                "status": "template_placeholder",
+                "status": "template_placeholder_candidate",
                 "scope": scope,
-                "note": "保留模板占位 / 本轮未处理。",
+                "note": "检测到模板占位候选；真实姓名或引用也可能命中，需人工确认是否为残留。",
             }
         else:
             audits[key] = {
-                "status": "confirmed",
+                "status": "detected",
                 "scope": scope,
-                "note": "已检测到非占位内容。",
+                "note": "已检测到结构信号；未命中占位模式不代表内容完整、正确或符合学校规范。",
             }
     return audits
 
 
 def inspect_document(input_path: Path) -> dict[str, object]:
+    content_audit = None
+    if input_path.suffix.lower() == ".docx":
+        from inspect_thesis_content import inspect_content
+
+        content_audit = inspect_content(input_path)
     try:
         import pythoncom
         import win32com.client  # type: ignore
@@ -303,7 +308,15 @@ def inspect_document(input_path: Path) -> dict[str, object]:
         full_text = normalize_text(document.Content.Text)
         section_presence = collect_section_presence(full_text)
         section_texts = collect_section_texts(full_text)
-        section_audit = build_section_audit(section_presence, section_texts)
+        if content_audit is not None:
+            # Full-text regular expressions can mistake TOC entries for real modules.
+            section_presence = {
+                key: value["status"] == "detected"
+                for key, value in content_audit["sections"].items()
+            }
+            section_audit = build_section_audit(section_presence, {})
+        else:
+            section_audit = build_section_audit(section_presence, section_texts)
         heading_counts, heading_samples = collect_heading_info(document)
         caption_counts = collect_caption_counts(document.Paragraphs)
 
@@ -339,11 +352,23 @@ def inspect_document(input_path: Path) -> dict[str, object]:
             },
             "sections": section_presence,
             "section_audit": section_audit,
+            "section_detection_basis": (
+                "DOCX XML paragraphs, excluding detected TOC entries; content_audit retains findings and boundaries"
+                if content_audit is not None
+                else "Legacy DOC text heuristic; TOC entries and section boundaries require manual confirmation"
+            ),
+            "content_audit": content_audit,
             "heading_counts": heading_counts,
             "heading_samples": heading_samples[:30],
             "abstract_stats": {
-                "chinese_abstract_cn_chars": count_cn_chars(section_texts["chinese_abstract"]),
-                "english_abstract_en_words": count_en_words(section_texts["english_abstract"]),
+                "chinese_abstract_cn_chars": (
+                    content_audit["abstract_stats"]["chinese_abstract"]["han_characters"]
+                    if content_audit is not None else count_cn_chars(section_texts["chinese_abstract"])
+                ),
+                "english_abstract_en_words": (
+                    content_audit["abstract_stats"]["english_abstract"]["english_word_tokens"]
+                    if content_audit is not None else count_en_words(section_texts["english_abstract"])
+                ),
             },
         }
         return report

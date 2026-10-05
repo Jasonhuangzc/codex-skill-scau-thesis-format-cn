@@ -1,9 +1,9 @@
 # South China Agricultural University Template Comments
 
-This file captures the comments embedded in the current converted school template.
-The current source-of-truth template is the 2024 official `附件6` under `assets/official-2024/`, and the bundled working `.docx` is converted from that file.
+This file preserves the repository's transcription and summaries of 50 comments from the converted 2024 school template. The rows are not a substitute for the original comment XML or a verbatim quotation of the official file.
+The source-of-truth is the 2024 official `附件6` identified by `assets/official-2024/manifest.json`; the working `.docx`, when imported locally, is converted from that file. If the original assets are absent, record `rule_verification: repository_transcription_only` and do not claim the source comments were reverified.
 
-The `Anchor paragraph` column follows the full document paragraph order produced by `scripts/extract_docx_comments.py`. It is not always the same as `python-docx` `Document.paragraphs` after tables appear. For frontmatter scripting, use `scau-frontmatter-map.md`.
+The `Anchor paragraph` column follows the full document paragraph order produced by `scripts/extract_docx_comments.py`. It is not always the same as `python-docx` `Document.paragraphs` after tables appear. These are template anchors, not paragraph indices or page numbers in an edited thesis. For frontmatter scripting, use `scau-frontmatter-map.md` and validate the actual anchors first. Rule IDs such as `SCAU2024-DOC:C29` refer to the `Comment ID`, not the anchor paragraph.
 
 ## Cover and front matter
 
@@ -71,6 +71,9 @@ The `Anchor paragraph` column follows the full document paragraph order produced
 
 ## Use of this reference
 
-- Use it as the default constraint layer for the current South China Agricultural University template.
-- If a new template version appears, re-extract comments with `scripts/extract_docx_comments.py` and compare before bulk formatting.
-- When a rule here conflicts with the school's latest written notice, flag the conflict and let the user decide whether to follow the newer notice or the inherited template.
+- Preserve the distinction between a comment instruction, a template example, and a workflow default; see `format-rules.md` for the evidence and result states.
+- An omitted property is not a prohibition. For example, C32/C33 do not explicitly require or prohibit bold, and C43 does not state table line spacing. Do not append those requirements to the comment text.
+- Character spacing is a layout value, not a mandated literal count of ASCII spaces. An explicit page-break-only rule is not present in this transcription.
+- Import and verify the original fixed 2024 package locally, then re-extract comments with `scripts/extract_docx_comments.py`. Compare IDs, text, anchors, and formatting before changing this record or bulk filling a template. A hash match alone does not validate an individual rule.
+- When the user supplies another version or a department/supervisor requirement, record its version, scope, and conflict first. A filename or a script option does not prove it supersedes the fixed 2024 package. Resolve requirements within the user's authorized task before using the different template.
+- Do not commit official or derived school assets merely to verify this reference. Final audit reports must identify any comments not checked against the original file.

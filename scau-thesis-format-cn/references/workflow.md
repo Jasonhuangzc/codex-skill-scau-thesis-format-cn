@@ -61,7 +61,7 @@ Before bulk edits, inspect the template comments:
 - if the template may have changed, run `scripts/extract_docx_comments.py` on the real template and compare the output
 - when cover or abstract anchor positions matter, also check `scau-frontmatter-map.md`
 
-Treat comments as binding instructions unless the user explicitly says the school template has been superseded.
+Enforce explicit comment instructions against the applicable file. Distinguish template values, workflow recommendations and unverified transcriptions; read content-audit.md before declaring content complete.
 
 ## 4. Edit in the safe order
 
@@ -136,7 +136,7 @@ Use Word-structure checks for these high-risk TOC/body items:
 - body repeated punctuation regression such as `。。` / `，，`
 - body line spacing remains 1.5
 
-Use `scripts/export_word_preview.ps1` to export PDF preview. Then inspect visually or use the `doc` skill if available.
+Run `scripts/inspect_thesis_content.py` for traceable content signals, then use `scripts/export_word_preview.ps1` to export PDF preview on Windows Word. Inspect actual pages; report unavailable rendering separately.
 
 ## 7. Final pass checklist
 
@@ -150,3 +150,9 @@ Confirm:
 - appendix numbering follows appendix rules
 - acknowledgements heading is correct
 - directory has been refreshed after正文 changes
+
+## Partial updates and closure
+
+On an existing working copy the project runner preserves other chapters by default. Only initial bootstrap or explicit verified sample trimming removes template body samples. Skipped steps do not require their input files. Word TOC refresh is opt-in with `--finalize-contents`; partial insertion does not normalize unrelated paragraphs/tables. See project-pipeline.md for recovery paths and atomic output publication.
+
+Compare source content and target blocks after insertion, then check contents numbering/fields at final closure. A final draft with required sections or references still containing placeholders is incomplete, even if that module was outside this pass. Appendix and abbreviation modules remain conditional.

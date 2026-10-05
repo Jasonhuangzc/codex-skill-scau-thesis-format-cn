@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
+import os
 from pathlib import Path
 from typing import Iterator
 
@@ -19,7 +20,7 @@ from docx.text.paragraph import Paragraph
 
 
 TOP_LEVEL_HEADING_RE = re.compile(r"^\d+\s+\S")
-TERMINAL_HEADING_RE = re.compile(r"^(参\s*考\s*文\s*献|附录[A-Z]?|致\s*谢)$")
+TERMINAL_HEADING_RE = re.compile(r"^(参\s*考\s*文\s*献|附录(?:[A-Z0-9].*)?|致\s*谢)$")
 TABLE_CAPTION_RE = re.compile(r"^表\d+(?:[-–]\d+)?(?:（续表）)?\s+\S")
 FIGURE_CAPTION_RE = re.compile(r"^图\d+(?:[-–]\d+)?\s+\S")
 DEFAULT_BODY_START_RE = re.compile(r"^\d+\s+\S")
@@ -123,7 +124,11 @@ def clone_paragraph_properties(source: Paragraph, target: Paragraph) -> None:
         return
     if target._p.pPr is not None:
         target._p.remove(target._p.pPr)
-    target._p.insert(0, deepcopy(source._p.pPr))
+    properties = deepcopy(source._p.pPr)
+    # A section boundary belongs to the original position, never to a style donor.
+    for section in properties.findall(qn("w:sectPr")):
+        properties.remove(section)
+    target._p.insert(0, properties)
 
 
 def copy_paragraph_style(source: Paragraph, target: Paragraph) -> None:
@@ -154,10 +159,17 @@ def get_donor_run(paragraph: Paragraph):
 def donor_font_name(source_run, attr_name: str, fallback: str) -> str:
     if source_run is None:
         return fallback
+    xml_attribute = {"name_far_east": "eastAsia", "name_ascii": "ascii"}.get(attr_name)
+    properties = source_run._r.rPr
+    if xml_attribute and properties is not None and properties.rFonts is not None:
+        value = properties.rFonts.get(qn(f"w:{xml_attribute}"))
+        if value:
+            return value
     value = getattr(source_run.font, attr_name, None)
     if value:
         return str(value)
-    name = getattr(source_run.font, "name", None)
+    # python-docx Font.name is the western font, not the east Asian font.
+    name = getattr(source_run.font, "name", None) if attr_name != "name_far_east" else None
     if name:
         return str(name)
     return fallback
@@ -235,9 +247,12 @@ def insert_table_before(document, block: Paragraph | Table, rows: int, cols: int
     return table
 
 
-def find_paragraph_by_regex(document, pattern: str, *, flags: int = 0) -> Paragraph | None:
+def find_paragraph_by_regex(document, pattern: str, *, flags: int = 0, skip_contents: bool = False) -> Paragraph | None:
     regex = re.compile(pattern, flags)
+    contents = contents_paragraph_elements(document) if skip_contents else set()
     for paragraph in document.paragraphs:
+        if paragraph._p in contents:
+            continue
         if regex.search(collapse_ws(paragraph.text)):
             return paragraph
     return None
@@ -253,24 +268,104 @@ def find_paragraph_by_text(document, text: str) -> Paragraph | None:
 
 
 def find_next_section_anchor(blocks: list[Paragraph | Table], start_index: int) -> Paragraph | None:
+    contents = contents_paragraph_elements(blocks[start_index]._parent)
+    source = blocks[start_index]
+    source_is_outline_heading = isinstance(source, Paragraph) and effective_outline_level(source) == 0
     for block in blocks[start_index + 1 :]:
         if not isinstance(block, Paragraph):
             continue
+        if block._p in contents:
+            continue
         text = normalize_heading_text(block.text)
-        if TOP_LEVEL_HEADING_RE.match(text) or TERMINAL_HEADING_RE.match(normalize_keyword_heading(text)):
+        numeric_heading = TOP_LEVEL_HEADING_RE.match(text)
+        if numeric_heading and not source_is_outline_heading and effective_outline_level(block) != 0:
+            raise RuntimeError("Ambiguous numbered paragraph without a level-1 outline; confirm the chapter boundary in Word before replacement.")
+        is_chapter_heading = numeric_heading and effective_outline_level(block) == 0
+        if is_chapter_heading or TERMINAL_HEADING_RE.match(normalize_keyword_heading(text)):
             return block
     return None
 
 
+def effective_outline_level(paragraph: Paragraph) -> int | None:
+    properties = paragraph._p.pPr
+    if properties is not None:
+        level = properties.find(qn("w:outlineLvl"))
+        if level is not None:
+            return int(level.get(qn("w:val"), "9"))
+    style = paragraph.style
+    visited = set()
+    while style is not None and style.style_id not in visited:
+        visited.add(style.style_id)
+        properties = style.element.pPr
+        level = properties.find(qn("w:outlineLvl")) if properties is not None else None
+        if level is not None:
+            return int(level.get(qn("w:val"), "9"))
+        style = style.base_style
+    return None
+
+
 def delete_range(document, start_block: Paragraph | Table, end_block: Paragraph | Table | None) -> None:
-    removing = False
-    for block in list(iter_block_items(document)):
-        if same_block(block, start_block):
-            removing = True
-        if removing and same_block(block, end_block):
-            break
-        if removing:
-            remove_block(block)
+    body = document.element.body
+    start = block_element(start_block)
+    end = block_element(end_block) if end_block is not None else None
+    children = list(body)
+    if start not in children or (end is not None and end not in children):
+        raise ValueError("Replacement boundaries must be direct document body blocks.")
+    start_index = children.index(start)
+    end_index = children.index(end) if end is not None else len(children)
+    if end_index <= start_index:
+        raise ValueError("Replacement end boundary must follow its start boundary.")
+    # Include content controls and other XML blocks between the anchors as well.
+    for element in children[start_index:end_index]:
+        if element.tag != qn("w:sectPr"):
+            body.remove(element)
+
+
+def is_contents_paragraph(paragraph: Paragraph) -> bool:
+    style = paragraph.style
+    visited = set()
+    while style is not None and style.style_id not in visited:
+        visited.add(style.style_id)
+        if any(re.match(r"^(?:TOC|目录)\s*\d+$", value, re.IGNORECASE) for value in (style.name, style.style_id)):
+            return True
+        style = style.base_style
+    outline_level = effective_outline_level(paragraph)
+    if outline_level is not None and outline_level < 9:
+        return False
+    return bool(re.search(r"(?:\t|\.{2,}|…{2,})\s*[0-9ivxlcdm]+\s*$", paragraph.text, re.IGNORECASE))
+
+
+def contents_paragraph_elements(document) -> set:
+    """Collect TOC field results once, including fields spanning paragraphs."""
+    body = document.element.body
+    contents = set()
+    field_stack = []
+    for paragraph_element in body.iter(qn("w:p")):
+        for field in field_stack:
+            field["paragraphs"].add(paragraph_element)
+        paragraph = Paragraph(paragraph_element, document)
+        if is_contents_paragraph(paragraph):
+            contents.add(paragraph_element)
+        for node in paragraph_element.iter():
+            if node.tag == qn("w:fldSimple") and re.search(r"\bTOC\b", node.get(qn("w:instr"), ""), re.IGNORECASE):
+                contents.add(paragraph_element)
+            elif node.tag == qn("w:fldChar"):
+                kind = node.get(qn("w:fldCharType"))
+                if kind == "begin":
+                    field_stack.append({"instruction": "", "paragraphs": {paragraph_element}})
+                elif kind == "end" and field_stack:
+                    field = field_stack.pop()
+                    if re.search(r"\bTOC\b", field["instruction"], re.IGNORECASE):
+                        contents.update(field["paragraphs"])
+            elif node.tag == qn("w:instrText") and field_stack:
+                field_stack[-1]["instruction"] += node.text or ""
+    for field in field_stack:
+        if re.search(r"\bTOC\b", field["instruction"], re.IGNORECASE):
+            contents.update(field["paragraphs"])
+    for control in body.iter(qn("w:sdt")):
+        if any(gallery.get(qn("w:val"), "").lower() in {"table of contents", "目录"} for gallery in control.iter(qn("w:docPartGallery"))):
+            contents.update(control.iter(qn("w:p")))
+    return contents
 
 
 def find_body_start_index(document, body_start_regex: str | re.Pattern[str] | None = None) -> int:
@@ -282,9 +377,10 @@ def find_body_start_index(document, body_start_regex: str | re.Pattern[str] | No
     else:
         regex = re.compile(pattern)
 
+    contents = contents_paragraph_elements(document)
     for index, paragraph in enumerate(document.paragraphs):
         text = normalize_heading_text(paragraph.text)
-        if "\t" in paragraph.text:
+        if paragraph._p in contents:
             continue
         if regex.search(text):
             return index
@@ -293,15 +389,17 @@ def find_body_start_index(document, body_start_regex: str | re.Pattern[str] | No
 
 def iter_body_paragraphs(document, body_start_regex: str | re.Pattern[str] | None = None) -> Iterator[Paragraph]:
     start_index = find_body_start_index(document, body_start_regex=body_start_regex)
+    contents = contents_paragraph_elements(document)
     for paragraph in document.paragraphs[start_index:]:
-        yield paragraph
+        if paragraph._p not in contents:
+            yield paragraph
 
 
 def classify_paragraph_as_donor_key(text: str) -> str | None:
     normalized = collapse_ws(text)
     if not normalized:
         return None
-    if "摘" in normalized and "要" in normalized:
+    if normalize_keyword_heading(normalized) == "摘要":
         return "abstract_title"
     if re.match(r"^\d+\.\d+\.\d+\.\d+\s+\S", normalized):
         return "heading4"
@@ -342,17 +440,24 @@ def find_heading_donors(
                 donors[key] = paragraph
 
     if "body" not in donors and allow_body_fallback:
-        for paragraph in document.paragraphs:
-            if collapse_ws(paragraph.text):
-                donors["body"] = paragraph
-                break
-        if "body" not in donors and fallback_document is not None:
-            for paragraph in fallback_document.paragraphs:
-                if collapse_ws(paragraph.text):
+        for source, _ in search_spaces:
+            for paragraph in iter_body_paragraphs(source, body_start_regex=body_start_regex):
+                text = collapse_ws(paragraph.text)
+                if TERMINAL_HEADING_RE.match(normalize_keyword_heading(text)):
+                    break
+                style_name = paragraph.style.name if paragraph.style is not None else ""
+                if (
+                    text
+                    and not is_contents_paragraph(paragraph)
+                    and classify_paragraph_as_donor_key(text) is None
+                    and not re.match(r"^(?:Heading|标题|Caption)", style_name, re.IGNORECASE)
+                ):
                     donors["body"] = paragraph
                     break
+            if "body" in donors:
+                break
 
-    required_keys = required or ["heading1", "heading2", "heading3", "heading4", "figure_caption", "table_caption", "note", "body"]
+    required_keys = required if required is not None else ["heading1", "heading2", "heading3", "heading4", "figure_caption", "table_caption", "note", "body"]
     missing = [key for key in required_keys if key not in donors]
     if missing:
         raise RuntimeError(f"Could not find donor paragraphs for: {', '.join(missing)}")
@@ -504,3 +609,12 @@ def apply_three_line_table_format(table: Table) -> None:
 
 def default_output_path(path: Path, suffix: str) -> Path:
     return path.with_name(f"{path.stem}{suffix}{path.suffix}")
+
+
+def ensure_output_copy(output: Path, *inputs: Path | None) -> None:
+    """Reject aliases/hardlinks so a new working copy cannot overwrite its source."""
+    for source in inputs:
+        if source is None:
+            continue
+        if output.resolve() == source.resolve() or (output.exists() and source.exists() and os.path.samefile(output, source)):
+            raise ValueError(f"Output must be a separate working copy, not an input/template: {source}")

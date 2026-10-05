@@ -14,9 +14,9 @@ Use this note when the user is on Windows, has local Microsoft Word, and the the
 - cleaning `参考文献` and `致谢` TOC entries after refresh
 - normalizing TOC Chinese chars to `宋体` and English / digits / `.` to `Times New Roman`
 - restoring `参考文献` and `致谢` title/body fonts after content edits
-- restoring the explicit page break before the English abstract
-- restoring正文 first-line indent to exactly `2` and line spacing to `1.5`
-- re-centering table-cell paragraphs and normalizing the `英文缩略词（符号表）` table
+- restoring an independent English abstract page using the selected template layout mechanism
+- restoring正文 two-character first-line indentation and `1.5` line spacing, accepting equivalent units verified with font size
+- re-centering target data-table paragraphs and restoring abbreviation-table fonts; verify table role and template values before normalization
 - performing a sequence of small format repairs on a large file
 
 ## When to prefer Word COM over python-docx
@@ -53,7 +53,7 @@ Use small JSON plans and run them in separate invocations:
    - `accept_all_revisions`
 2. Main replacement stage:
    - one or more `replace_text` actions
-3. Format cleanup stage:
+3. Format cleanup stage (select only operations supported by the actual audit; these are not an automatic whole-document plan):
    - `ensure_page_break_before` for `section: "english_abstract"`
    - `normalize_body_paragraph_layout`
    - `normalize_table_cells`
@@ -64,3 +64,5 @@ Use small JSON plans and run them in separate invocations:
    - `normalize_tail_section_fonts`
 
 For long files, pass `--log-jsonl <path>` to record per-operation start/finish events and locate the exact stuck action.
+
+The abbreviation-table 1.5 line-spacing value and TOC font pairing in normalization helpers are workflow defaults to verify against the real template, not requirements inferred from comments C43/C44. Apply only to confirmed target ranges.

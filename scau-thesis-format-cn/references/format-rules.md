@@ -1,378 +1,127 @@
-# South China Agricultural University Thesis Format Rules
+# SCAU 2024 规则、证据与判定边界
 
-Use this file when checking a South China Agricultural University undergraduate thesis against the official template and related comment-derived conventions.
+本 skill 使用华南农业大学本科毕业论文（设计）2024 年修订包。检查顺序是确认文件版本、定位具体条款，再检查论文；不得把脚本默认值或模板中的一个例子写成学校统一规定。
 
-The only source-of-truth set for this skill is the 2024 revision package:
+内容审查与回灌验收见 `references/content-audit.md`。批注 ID 对照见 `references/scau-template-comments.md`，执行重点见 `references/template-comment-rules.md`。
 
-- `assets/official-2024/附件1-5.华南农业大学本科毕业论文（设计）撰写规范（封面模板、原创性声明及使用授权声明、正文结构参考样式、参考文献著录规则、评分参考标准）.pdf`
-- `assets/official-2024/附件6.华南农业大学本科毕业论文（设计）格式模板.doc`
-- `assets/official-2024/关于印发《华南农业大学本科毕业论文（设计）撰写规范》（2024年修订）的通知.doc`
+## 1. 固定证据包
 
-The bundled working template `assets/template/scau-undergrad-thesis-template.docx` is a converted derivative of the official 2024 `附件6` Word file.
-In the public repository, these files are expected to be imported locally through `scripts/import_official_2024_assets.py` before first use.
+| Source ID | 文件 / 位置 | 用途 |
+| --- | --- | --- |
+| `SCAU2024-PDF` | `assets/official-2024/附件1-5.华南农业大学本科毕业论文（设计）撰写规范（封面模板、原创性声明及使用授权声明、正文结构参考样式、参考文献著录规则、评分参考标准）.pdf` | 正式规范、参考文献著录规则、评分参考标准；判断应记录附件、页码和原文位置。 |
+| `SCAU2024-DOC` | `assets/official-2024/附件6.华南农业大学本科毕业论文（设计）格式模板.doc` | 模板正文、版式与批注；批注用 ID 定位，示例用段落/表格/页面定位。 |
+| `SCAU2024-NOTICE` | `assets/official-2024/关于印发《华南农业大学本科毕业论文（设计）撰写规范》（2024年修订）的通知.doc` | 版本和适用范围；不能据文件名推导内容或版式数值。 |
+| `SCAU2024-COMMENTS` | `references/scau-template-comments.md` | 仓库保存的 50 条批注整理记录；是派生证据，不替代官方 DOC 原文。 |
+| `SCAU2024-TEMPLATE` | `assets/template/scau-undergrad-thesis-template.docx` | 官方 DOC 的转换副本，用于回灌和布局比对，不是另一个学校版本。 |
 
-For template-comment-sensitive items such as `目录`, `参考文献`, `致谢`, keywords, citation punctuation, and subfigure labels, also read `references/template-comment-rules.md`.
+`assets/official-2024/manifest.json` 保存三个原始文件的文件名和 SHA256。哈希相符只证明文件与固定包一致，不能单独证明某条规则存在。公开仓库可能仅含 manifest，原始文件及转换模板需本地导入；原始文件不应随优化提交上传。
 
-## 1. Confirmed school rules from the PDF
+审查开始时记录 `rule_verification`：
 
-These rules are explicit in the 2024 `附件1-5`.
+- `verified_primary`：原始文件哈希通过，且已定位相关原文/批注。
+- `repository_transcription_only`：只有本仓库摘录和批注表，尚未复验原文。
+- `unavailable`：对应规则没有原始文件或可定位摘录。
 
-### 1.1 Body structure
+原始文件缺失时仍可检查结构、内容和格式信号，并说明限制；不得声称“已按官方文件逐条验收”或“全篇符合学校规范”。不要用 `--skip-hash-check` 让同名新文件继承 2024 年证据状态。
 
-- The school gives a recommended farm/science structure:
-  - `1 前言`
-  - `2 材料与方法`
-  - `3 结果与分析`
-  - `4 讨论与结论`
-- This is a reference structure for the正文. Other format rules still follow the school-wide requirements.
+## 2. 规则强度与结果状态分开记录
 
-### 1.2 In-text citation rules
+| `rule_strength` | 含义 | 执行方式 |
+| --- | --- | --- |
+| `school_explicit` | 官方正式规范明确要求，已定位条款 | 适用范围内的硬性要求；缺原文复验时披露限制。 |
+| `template_comment` | 模板批注明确指示，已有批注 ID | 按批注范围执行；不能从“未提到某属性”推导“禁止该属性”。 |
+| `template_example` | 模板中呈现的值、样式或布局 | 作为默认模板值检查一致性，仅凭示例差异不能认定违反学校规范。 |
+| `workflow_default` | 为稳定回灌和检验选用的实现方式 | 可用等效方式实现，不能升级为学校要求。 |
+| `manual` | 学术事实、歧义或视觉/导师判断 | 给出定位和需确认问题，不自动改写事实。 |
 
-- Use the `著者-出版年` system.
-- Citation parentheses use Chinese full-width round brackets.
-- If the author is mentioned in the sentence, put the year in parentheses after the author name.
-- If the author is not mentioned in the sentence, put `作者, 年份` in parentheses after the cited statement.
-- For two authors:
-  - Chinese use `和`
-  - English use `and`
-- For three or more authors:
-  - Chinese use `等`
-  - English use `et al.`
-- For the same author with multiple years, list later items by year only.
-- For the same author in the same year, distinguish entries with `a`, `b`, `c`.
-- For one location citing multiple sources:
-  - list Chinese first, then foreign-language references
-  - separate items with semicolons
-- Inside citation parentheses, punctuation uses half-width English symbols.
-- After commas and semicolons inside citation parentheses, keep one half-width space.
-- When quoting a precise page repeatedly, use `年份: 页码`.
+结果沿用 `confirmed`、`suggested`、`manual_confirm`，必须说明含义和覆盖范围：`confirmed` 可以表示“检测到空摘要”“样本字号匹配”等观察结果，不代表全篇合规；`suggested` 为待核对或优化项；`manual_confirm` 表示证据、解析或人工判断尚未完成。问题还应区分 `format_defect`、`content_incomplete`、`template_placeholder` 和 `unverified`。
 
-### 1.3 Bibliography list rules
+## 3. 可定位的模板批注要求
 
-- List only sources actually cited in the正文.
-- Do not number bibliography entries.
-- Group by language in this order for this skill:
-  - Chinese
-  - western-language and Russian entries as the foreign-language block
-  - if another foreign-language block appears, treat it as part of the foreign-language block unless the school later publishes a stricter sub-order rule
-- Chinese entries are sorted by the first author's pinyin surname.
-- Western-language entries are sorted by the first author's surname.
-- Chinese bibliography text uses `宋体` small-four.
-- Western text and digits use `Times New Roman` small-four.
-- Punctuation in both Chinese and English bibliography entries uses half-width `Times New Roman` symbols.
-- Every bibliography entry ends with a half-width period.
-- After commas, periods, colons, and semicolons in bibliography entries, keep one half-width space where the template examples show it.
-- For authors:
-  - list all authors when there are up to three
-  - list the first three only when there are more than three
-  - add `等` for Chinese or `et al.` for English
-- Western author names use `surname + initials`; initials are uppercase and have no abbreviation dots.
-- Foreign journal names may use the full title or a standard abbreviation.
-- If abbreviated, do not use abbreviation dots, and separate words with one space.
-- Use hanging indent of two characters for each bibliography entry.
-- Two-character Chinese names do not have an internal space.
-- Page ranges use the short hyphen `-`, not wave dashes.
-- Between adjacent brackets such as `) [` keep one half-width space.
-- URLs do not add spaces around punctuation.
+以下来源均为 `SCAU2024-DOC` 的批注 ID，现有记录见 `SCAU2024-COMMENTS`。原始文件未导入时以 `repository_transcription_only` 标注。
 
-### 1.4 Reference entry patterns explicitly given in the PDF
+### 3.1 封面、摘要与目录
 
-- Book: `作者. 书名[M]. 版次. 出版地: 出版者, 出版年: 起止页码.`
-- Chapter in book or conference volume: `析出作者. 析出题名[类型]//原文献作者. 原文献题名. 出版地: 出版社, 出版年: 起止页码.`
-- Journal article: `作者. 题名[J]. 期刊名, 出版年, 卷号(期号): 起止页码.`
-- Newspaper: `作者. 题名[N]. 报刊名, 年-月-日(版次).`
-- Thesis: `作者. 题名[D]. 授予单位所在地: 授予单位, 授予年份: 起止页码.`
-- Report: `作者. 题名[R]. 报告地: 报告会主办单位, 年份.`
-- Online material: `作者. 题名[文献类型/OL]. (上传或更新日期) [引用日期]. 获取和访问路径.`
+| 检查项 | 批注来源 | 要求及边界 |
+| --- | --- | --- |
+| 论文/设计类型与题名 | `C0`、`C1` | 区分“本科毕业论文”和“本科毕业设计”；类型行宋体小初加粗居中，题名黑体二号加粗居中。未记录题名长度上限，不自行追加。 |
+| 学院、专业、姓名、学号、导师、日期 | `C2–C8` | 学院、专业用全称；字号和字体按批注表。真实性、导师职称依用户材料核对。 |
+| 声明页页码 | `C26` | 声明页不加页码；声明文字、签署情况需对照原始页，不自动制造签名。 |
+| 中文摘要标题 | `C28` | 黑体四号、居中、1.5 倍行距，“摘要”间空 4 个字距。字距不等于必须写某个数量的 ASCII 空格。 |
+| 中文摘要正文 | `C29` | 宋体 + Times New Roman 小四，两端对齐、首行缩进 2 字距、1.5 倍行距；300 至 600 字；不引用参考文献。输出统计口径，不能直接用“汉字数”替代全部可见字数。 |
+| 中文关键词 | `C30` | 标签黑体小四，内容宋体 + Times New Roman 小四；3 至 5 个；全角分号分隔，末尾无标点。 |
+| 英文题名、姓名、单位 | `C31–C33` | 题名 Times New Roman 四号加粗居中、实词首字母大写；姓名和单位 TNR 小四居中，单位按批注表组成。未写加粗不等于明确禁止加粗。 |
+| 英文摘要 | `C34` | `Abstract:` 加粗；正文 TNR 小四、两端对齐、1.5 倍行距，第二段及以后首行缩进 2 字距，英文标点后半角空格。摘录没有英文摘要字数限制。标签以外不统一加粗是模板默认值，不是禁止局部强调的明文规定。 |
+| 英文关键词 | `C35` | `Key words:` 加粗，关键词 TNR 小四，半角分号分隔、末尾无标点、实词首字母大写。摘录没有独立的英文关键词数量限制。 |
+| 缩略词表 | `C43` | 使用时：标题黑体四号居中，三线表，表内宋体/TNR 小四居中。批注没有写表内 1.5 倍行距，该值需从实际模板验证。 |
+| 目录 | `C44`、`C45` | 标题空 4 字距、黑体四号；条目小四，到 3 级，页码右对齐、有前导符，正文修改后刷新；目录中“参考文献”“致谢”无字间空格，成绩评定表不编入目录。目录字体配对须另核模板，不能据此批注新增硬性规则。 |
 
-## 2. Template examples from the DOC
+中英文摘要是否独立成页按实际模板布局核对。显式分页符、段前分页、分节符是实现选择；现有摘录没有“只能使用显式分页符”的要求。
 
-These are format examples from the 2024 `附件6`. Use them as layout evidence when the PDF is silent.
+### 3.2 正文、图表与公式
 
-### 2.1 Front matter and abstracts
+| 检查项 | 批注来源 | 要求及边界 |
+| --- | --- | --- |
+| 标题 1–4 级 | `C47`、`C50`、`C62`、`C71` | 一级黑体四号；二级黑体小四；三级、四级楷体小四；左对齐、1.5 倍行距，题序与题名空 1 字距；西文按批注表/实际模板核对。不强迫使用全部 4 级。 |
+| 正文段落 | `C51` | 宋体/TNR 小四、首行缩进 2 字距、1.5 倍行距。字距/twips/磅值需按单位判断等效性；COM 数值差异先定位，不把近似读取值单独定性为违规。 |
+| 文内作者写法 | `C52`、`C53` | 两作者中文“和”、英文“and”；三位及以上正文仅第一作者加“等”或“et al.”。与文后条目“前三作者”区分。 |
+| 文内引用标点与次序 | `C54` | 外圆括号中文状态，内部标点英文状态，逗号/分号后半角空格；同处中文在前、外文在后，各组年份递增。仅对文献引用适用，不能统一改所有括号。 |
+| 表格 | `C56`、`C57`、`C58`、`C78` | 数据表三线表；正文表从 1 起连续编号，表题在上、五号居中，表号后 1 字距；表内宋体/TNR 五号居中单倍；表注小五、1.5 倍行距；续表重复表号，各页重复表头。引用表列资料来源。封面等布局表不自动按数据表处理。 |
+| 图 | `C67`、`C68`、`C72` | 正文图从 1 起连续编号，图题在下、五号居中，图号后 1 字距；图和图题不拆页；图注小五、1.5 倍行距；引用图列来源；分图依次 `(a)/(b)/(c)`、各有分图名，主图名在全部分图下方正中。 |
+| 图表间距 | `C56`、`C67` | 与正文上下各空一行；保留模板视觉间距，不盲目增空段落导致页尾碎片。 |
+| 公式 | `C64` | 居中，正文连续编号，编号右端、不加虚线、五号；含公式段落“可设”最小值 20 磅，是允许值而非必选值。 |
+| 脚注 | `C66` | 全文连续编号，宋体/TNR 小五，两端对齐、单倍行距。 |
+| 附录 | `C140` | 使用时：序号与标题空 1 字距，图表公式独立编号，如图 A1、表 A1、式 A1。不得并入正文序列。 |
 
-- The Chinese abstract page uses:
-  - `摘        要`
-  - abstract body
-  - `关键词：关键词；关键词；...`
-- The Chinese abstract is expected to stay around `300-600` words and normally does not cite references.
-- The English abstract section uses:
-  - English title
-  - author name
-  - affiliation line in parentheses
-  - `Abstract:`
-  - `Key words:`
-- The Chinese abstract and the English abstract are separated by an explicit page break in the final Word file.
-- In the English abstract body, commas, periods, colons, and semicolons are followed by one half-width space.
-- The second and later English abstract paragraphs use a two-character first-line indent according to the template comment.
-- The template includes an optional `英文缩略词（符号表）` section.
-- The template includes `目录`, then the正文.
-- The template shows a front-matter sequence of:
-  - cover
-  - originality statement
-  - authorization statement
-  - Chinese abstract
-  - English abstract
-  - optional abbreviation list
-  - table of contents
-  - body
-  - references
-  - appendices
-  - acknowledgements
-- The statement pages do not carry page numbers.
+### 3.3 参考文献与致谢
 
-### 2.2 Heading levels
+| 检查项 | 批注来源 | 要求及边界 |
+| --- | --- | --- |
+| 文后标题与条目 | `C121` | 标题字间 1 字距，黑体四号居中；条目宋体/TNR 小四、不编号，换行悬挂缩进 2 字距，中文在前外文在后。 |
+| 标点空格 | `C124`、`C128`、`C133`、`C134` | 半角标点，逗号/句号/冒号/分号后半角空格；页码短横线 `-`；相邻括号间半角空格；URL 内不加空格。缩写、DOI、URL、小数需语义保护，不能无差别替换。 |
+| 作者、期卷与版次 | `C125–C127`、`C135` | 三人及以内列全作者，三人以上列前三人加“等”/“et al.”；两字中文姓名无内空格；无卷号用年(期)，无期号用年、卷；第 1 版图书不标版次。 |
+| 致谢 | `C143`、`C144` | 标题空 4 字距、黑体四号居中、1.5 倍行距；正文宋体/TNR 小四、两端对齐、首行缩进 2 字距、1.5 倍行距。 |
 
-- The template shows heading levels such as:
-  - `1`
-  - `1.1`
-  - `1.1.1`
-  - `1.1.1.1`
-- When checking a draft, focus on continuity and style consistency rather than forcing unnecessary extra levels.
-- Level-1 heading: `黑体 + Times New Roman`, four-point size class, 1.5-line spacing, left aligned.
-- Level-2 heading: `黑体 + Times New Roman`, small-four, 1.5-line spacing, left aligned.
-- Level-3 heading: `楷体 + Times New Roman`, small-four, 1.5-line spacing, left aligned.
-- Level-4 heading: `楷体 + Times New Roman`, small-four, 1.5-line spacing, left aligned.
-- The heading number and the heading text are separated by one character space.
-- Body text uses `宋体 + Times New Roman`, small-four, first-line indent of two characters, and 1.5-line spacing.
-- For body-paragraph indentation checks, treat `1.8` or similar values as defects; the first-line indent should be exactly `2` characters.
+## 4. PDF 规则的既有记录：先复验再用于正式结论
 
-### 2.3 Figures, tables, formulas
+旧版 `format-rules.md` 将下列内容记为 `附件1-5` 明确规则，却没有保存页码、条款或原文摘录。原始 PDF 可读前标注 `repository_transcription_only`；使用时补定位，不能当作已完成原文复验。
 
-- Table title example: `表1  表名`
-- Continued table example: `续表2  表名`
-- Table note example: `注：...`
-- Figure caption example: `图1  图名`
-- Figure note example: `注：...`
-- Subfigure example in the template: `(a)  分图名`, `(b)  分图名`
-- Formula numbering example: `（式1）`
-- Tables and figures leave one blank line from surrounding正文 in the layout example comments.
-- Tables use a three-line-table structure with heavier top and bottom rules and a lighter middle rule.
-- Table body text uses five-point size class and single spacing in the template comment.
-- Table notes use small-five in the template comment.
-- Table-cell paragraphs should stay centered in the final Word file.
-- For the optional `英文缩略词（符号表）` table, restore `宋体 + Times New Roman` small-four, centered paragraphs, and `1.5` line spacing.
-- Figures and their main captions must not be split across pages.
-- Formula blocks are centered, numbered continuously, and their numbers sit at the right end of the line.
-- Footnotes are continuous and use small-five single spacing.
+- 农/理科正文参考结构：前言、材料与方法、结果与分析、讨论与结论。是参考样式，不是所有专业必须沿用的章名。
+- 文内著者—出版年制：作者在句中时作者后写年份，未在句中时引文后写作者/年份；同作者同年用 a/b/c；精确引用可用年份/页码。与 `C52–C54` 交叉核对。
+- 文后仅列正文实际引用；中文第一著者按姓氏汉语拼音排序，西文第一著者按姓氏字母排序。`C121` 仅支持中文在前、外文在后；外文各语言的分组及俄文排序须查 PDF，不能由脚本将所有非中文合并的行为反推规范。
+- 西文作者姓氏加大写名字缩写且缩写无点；外文期刊名全称或规范缩写；条目末尾半角句号等细则，须查著录说明。
 
-### 2.4 Sensitive comment-derived checks
+既有著录模式也应与 PDF 的类型样例复验；未知字段不得为补齐格式而编造：
 
-These come from explicit comments in the 2024 `附件6` and should be treated as high-priority final audit checks.
+| 类型 | 既有记录的模式 |
+| --- | --- |
+| 图书 | `作者. 书名[M]. 版次. 出版地: 出版者, 出版年: 起止页码.` |
+| 析出文献 | `析出作者. 析出题名[类型]//原文献作者. 原文献题名. 出版地: 出版社, 出版年: 起止页码.` |
+| 期刊 | `作者. 题名[J]. 期刊名, 出版年, 卷号(期号): 起止页码.` |
+| 报纸 | `作者. 题名[N]. 报刊名, 年-月-日(版次).` |
+| 学位论文 | `作者. 题名[D]. 授予单位所在地: 授予单位, 授予年份: 起止页码.` |
+| 报告 | `作者. 题名[R]. 报告地: 报告会主办单位, 年份.` |
+| 在线资料 | `作者. 题名[文献类型/OL]. (上传或更新日期) [引用日期]. 获取和访问路径.` |
 
-- `关键词`:
-  - the label `关键词：` keeps the template label/body distinction and should not force the whole line into one uniform emphasis style
-  - Chinese keywords are separated by full-width semicolons
-  - the last keyword has no punctuation
-- `Key words`:
-  - the label `Key words:` is explicitly bold in the template comment, but the keyword content after it is not
-  - English keywords are separated by half-width semicolons
-  - the last keyword has no punctuation
-  - each content word begins with an uppercase letter
-- `英文摘要格式边界`:
-  - `Abstract:` is explicitly bold
-  - the abstract body immediately after `Abstract:` is not
-  - English title is explicitly bold
-  - English author and affiliation are not explicitly marked as bold in the template comment
-  - the English abstract section starts on a new page through an explicit page break
-- `目录`:
-  - update the table of contents after heading edits
-  - the final TOC pass is: update fields -> clean the TOC `参考文献` / `致谢` entries -> normalize TOC fonts
-  - after each TOC update, re-check and clean the `参考文献` and `致谢` entries so they do not keep the heading-line character spacing
-  - show contents down to level 3
-  - keep left-aligned entries, right-aligned page numbers, and leader dots
-  - `参考文献` and `致谢` in the contents do not insert character spacing
-  - TOC Chinese characters use `宋体`; English, digits, and `.` use `Times New Roman`
-- `目录标题`:
-  - the title itself uses `目        录`
-- `参考文献` title:
-  - the heading itself uses spaced characters in the title line according to the template comment
-  - the title line keeps heading fonts, but bibliography entry paragraphs return to `宋体 + Times New Roman` small-four
-- `致谢` title:
-  - the heading itself uses the template-spaced title line, but the contents entry keeps `致谢` without inserted character spacing
-  - the title line keeps heading fonts, but the acknowledgement body returns to `宋体 + Times New Roman` small-four
-- Citation examples:
-  - citation brackets are full-width
-  - punctuation inside citation brackets is half-width
-  - comma and semicolon are followed by one half-width space
-- Bibliography examples:
-  - punctuation is half-width
-  - punctuation spacing follows the template comments
-- Subfigure labels:
-  - the template comment uses `(a)`, `(b)`, `(c)` style directly under each panel
-- `图表版式`:
-  - figure and table blocks keep blank lines from正文
-  - figures do not split from their captions across pages
-  - continued tables repeat the table header
-- `页码`:
-  - statement pages do not show page numbers
-- `公式与脚注`:
-  - formula numbers are right aligned without leader dashes
-  - footnotes use continuous numbering
+本仓库没有逐项保存评分标准原文，不能自行追加“最低参考文献数量”“最低篇幅”“必须创新”“必须某显著性水平”等阈值。以任务书、学院补充文件和官方 PDF 评分附件确认。
 
-## 3. Reusable conventions for SCAU science theses
+## 5. 模板默认与人工内容检查
 
-These conventions are reusable defaults rather than current-project assumptions.
+- 模板模块顺序默认是：封面、原创性声明、使用授权声明、中文摘要、英文摘要、可选缩略词表、目录、正文、参考文献、附录、致谢。必需性和专业差异对照正式结构规定；附录/缩略词表缺失不自动报错。
+- 图表语言、图中文字字体、主图标题是否写入图片等属于模板一致性/编辑性建议，除非文件明文规定，报告为 `workflow_default` / `suggested`。
+- 摘要与正文目的/方法/结果/结论一致，中英文对应，题名与范围一致，数据与结论互相支持，文内引用与文后条目双向对应，是内容审查项；证据与修复权限见 `content-audit.md`。
+- 前期装版可保留标注的占位。最终提交中，占位、缺实际参考文献、空摘要仍是未完成项，不能因“本轮未处理”自动豁免。未用到的可选模块按范围报告。
 
-- A common science-thesis structure is:
-  - `前言`
-  - `材料与方法`
-  - `结果与分析`
-  - `讨论与结论`
-- If the user later splits conclusion into a separate chapter, check continuity rather than forcing one fixed structure.
-- Figure captions and notes should stay in Chinese unless the school or department explicitly requires another language.
-- For final Huanong Word-format audit, prefer the template-comment subfigure style `(a)`, `(b)`, `(c)` unless the supervisor explicitly fixes another house rule.
-- Put subfigure labels under each panel and the main figure title under the whole figure.
-- Do not embed the main figure title inside the image.
-- For editable figure text, use:
-  - Chinese: `宋体`
-  - western letters and digits: `Times New Roman`
-- Keep table titles above tables and notes below tables.
+## 6. 验收与报告
 
-## 4. Final Word audit priorities
+按任务范围完成以下证据链：
 
-When the user provides a Word file for final review, prioritize these checks in order:
+1. 源文件和版本：manifest 校验、规则定位、用户材料清单。
+2. 内容：结构、占位、关键数据/结论、术语和引用双向核对；人工项保留。
+3. Word 结构/字符格式：报告覆盖数量、抽样范围、自动和人工项。
+4. 导出 PDF/页面图：模块顺序、独立页、页码、TOC 页码、图题/表题位置、跨页、续表与可读性。
+5. 修复后复验：本轮输出为下一轮输入，记录问题、修正与复查；必要时清理目录特殊项和字体。
 
-1. Rendered-page checks
-   - page order
-   - whether major sections start consistently
-   - page numbering continuity
-   - no-page-number handling on statement pages
-   - table of contents alignment with actual headings
-   - figure caption and table title positions
-   - hanging indent in the bibliography
-   - continued-table layout
-   - figure or caption page splitting
-   - teacher-visible punctuation and bracket details in citations, bibliography, keywords, and subfigure labels
-   - TOC cleanup state for `参考文献` and `致谢`
-   - post-edit font drift in正文, bibliography, and acknowledgement paragraphs
-2. Text-structure checks
-   - heading numbering continuity
-   - heading-style consistency by level
-   - figure and table numbering continuity
-   - abstract and keyword labels
-   - appendix and acknowledgement labels
-3. Bibliography and citation checks
-  - author-year format in the body
-  - entry completeness and punctuation
-  - Chinese versus English entry style differences
-  - bibliography ordering:
-    - Chinese references first
-    - western-language and Russian references after Chinese
-    - Chinese entries sorted by the first author's surname in Hanyu Pinyin order
-    - western-language and Russian entries sorted by the first author's surname in alphabetical order
-4. Terminology and mixed-language consistency
-  - abbreviations
-  - species names
-  - concentration and unit formats
-  - repeated English term variants
-5. High-visibility cleanup checks
-   - TOC `参考文献` / `致谢` entry spacing
-   - TOC Chinese-vs-western font pairing
-   - repeated punctuation such as `。。` and `，，`
-   - body paragraph `1.5` line spacing, excluding table-cell paragraphs
+Poppler 不可用时用 PyMuPDF 渲染；文本提取乱码时继续看页面图。只跑统计或字符脚本，或只读几段样本，不能给出全篇合规结论。
 
-If the rendered file has not been inspected, do not mark the thesis as fully compliant.
-
-### 4.1 Render priority and fallback
-
-- Preferred evidence chain:
-  - `Word report`
-  - `exported PDF`
-  - `rendered page images`
-- If `pdftoppm` or Poppler is unavailable, render PDF pages with PyMuPDF instead of stopping the audit.
-- If PDF text extraction is garbled, keep the rendered-page audit moving; do not use garbled extraction as the main reason to stop.
-
-### 4.2 Figure-special audit priorities
-
-When the task is figure-only review, change the order to:
-
-1. figure page mapping
-2. figure body, caption, and note order
-3. split risk across pages
-4. next-heading start risk
-5. readability manual confirmation
-6. broader textual consistency only after the figure block is stable
-
-### 4.3 Template boundary handling
-
-- `封面`, `原创性声明`, `使用授权声明`, and `目录` remain hard checks.
-- `英文缩略词`, `附录`, `致谢`, and still-unfinished `参考文献` may be reported as:
-  - `保留模板占位 / 本轮未处理`
-  - not as direct format errors by default
-- Distinguish:
-  - real formatting defects
-  - content completion issues
-  - template placeholders intentionally left for a later round
-
-## 5. Report expectations
-
-For a final thesis format audit, the report should ideally include:
-
-1. Audit target basics
-   - file name
-   - source type
-   - whether the judgment is based on Word text only, rendered PDF pages, or both
-2. Structure overview
-   - presence of cover, statements, abstracts, contents, body, references, appendices, acknowledgements
-   - chapter count and heading depth
-3. Basic statistics
-   - page count
-   - Word statistics
-   - Chinese abstract character count
-   - English abstract word count
-   - heading counts by level
-   - figure, table, formula, footnote, and reference counts where derivable
-4. Format completion assessment
-   - front matter
-   - contents
-   - body headings and paragraphs
-   - figures
-   - tables
-   - formulas and footnotes
-   - references
-   - appendices and acknowledgements
-5. High-risk issues summary
-   - teacher-visible punctuation and bracket issues
-   - page split, caption placement, TOC refresh, and page number problems
-6. Detailed issues list
-7. Still-unverified items
-   - anything blocked by missing render output or ambiguous supervisor requirements
-
-### 5.1 Repair-closure reporting
-
-For each high-risk issue, prefer this structure:
-
-1. `问题`
-2. `已采取修正`
-3. `修正后复查结果`
-
-When possible, propose the smallest effective repair action rather than a vague suggestion.
-
-### 5.2 Structured conclusion levels
-
-Use these levels consistently in machine-readable outputs:
-
-- `confirmed`
-- `suggested`
-- `manual_confirm`
-
-### 5.3 Figure-special structured outputs
-
-For figure audit outputs, include at least:
-
-- `figure_page_map`
-- `render_basis`
-- `caption_order_status`
-- `note_order_status`
-- `split_risk`
-- `next_heading_risk`
-- `page_images`
-- `still_manual_confirm`
-
-## 6. Ambiguity handling
-
-- Treat the PDF as the authority for explicit school rules, especially bibliography and citation format.
-- Treat the DOC as the authority for layout examples such as abstract blocks, heading levels, figure captions, table captions, and continued tables.
-- If the PDF is silent and the DOC only shows an example rather than a hard rule, prefer consistency with the template and with the rest of the thesis.
-- If the project convention conflicts with the final official template or the supervisor's explicit requirement, follow the final required version consistently throughout the thesis.
+每条问题至少含 `rule_id`、结果 `status`、来源内的 `rule_strength`/`rule_verification`、论文位置、观察证据、覆盖范围和修复状态。报告末尾列未复验规则、缺资产、未检查页面和待人工项。文件/页码未确认时，不给虚假的精确来源位置。

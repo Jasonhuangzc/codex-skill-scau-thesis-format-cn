@@ -1,262 +1,94 @@
 ---
 name: scau-thesis-format-cn
-description: Fill the official South China Agricultural University undergraduate thesis Word template with user-provided thesis content, then audit the rendered Word/PDF formatting and iterate targeted repairs until the thesis is submission-ready without changing academic meaning.
+description: 按华南农业大学（SCAU/华农）本科毕业论文官方模板回灌用户内容，依据指定规范检查内容完整性与格式，并核对真实 Word/PDF 页面；用于装版、局部更新、终稿审查及修复，不代写研究结论。
 ---
 
 # SCAU Thesis Format CN
 
-Use one closed loop for South China Agricultural University undergraduate theses:
+从真实模板或已有工作稿出发，执行“确认规则与输入 → 回灌选定内容 → 内容核对 → Word 结构和渲染检查 → 定向修复 → 复查”。保留学术含义、数据和引用关系，不为满足篇幅或格式要求编造内容。
 
-1. start from the real Word template
-2. fill user content into the template
-3. audit the rendered Word/PDF result
-4. repair the specific formatting or insertion problem
-5. recheck until the confirmed issues converge
+## 先确认文件与任务范围
 
-Act as a template-driven formatter and rendered-layout auditor, not a content rewriter.
+- 区分模板初始化、局部回灌、全文装版、仅审查、审查并修复、清洁提交版。局部更新只处理选定章节或模块。
+- 默认标准包为 `assets/official-2024/manifest.json` 所列三份 2024 文件；工作模板为 `assets/template/scau-undergrad-thesis-template.docx`，由附件6转存。公开仓库不附带这些原文件，须本地导入或传入已核实来源的模板。
+- 官方原文件在场时核对 manifest 的 SHA256，并记录适用版本。缺原文件时可按仓库批注摘录做预检，但注明“原文未复验”；缺模板只阻塞装版，不阻塞已有 DOCX 的只读内容预检。
+- 用户指定其他正式版本或院系文件时，先阅读并定位差异，再以用户要求的适用文件建立规则映射；不混用版本，不直接套用旧锚点或把新文件当作已验证的 2024 包。
+- 找到源稿、元数据、图片、表格和文献，建立“来源 → 目标模块”清单。通用文件名和显式路径均可，禁止依赖某个论文项目的目录名。
+- 原稿和模板保留；输出到工作副本。封面身份信息、摘要、参考文献或数据缺失时列出缺项，保留已有内容，不用占位文本覆盖真实内容。
 
-## Core guardrails
+## 按需读取
 
-- Use the school template as the layout source of truth.
-- For this skill, the only official source-of-truth package is the 2024 revision set under `assets/official-2024/`:
-  - `附件1-5.华南农业大学本科毕业论文（设计）撰写规范（封面模板、原创性声明及使用授权声明、正文结构参考样式、参考文献著录规则、评分参考标准）.pdf`
-  - `附件6.华南农业大学本科毕业论文（设计）格式模板.doc`
-  - `关于印发《华南农业大学本科毕业论文（设计）撰写规范》（2024年修订）的通知.doc`
-- Preserve academic meaning. Fix structure, layout, fonts, numbering, captions, bibliography format, and template compliance only.
-- Prefer targeted repair over rebuilding the whole document.
-- For large local Word files on Windows, do not run one huge all-in-one pass; split into staged passes and save each stage to a new copy with `SaveAs2`.
-- Treat rendered pages as the final evidence for pagination, caption placement, hanging indent, continued tables, and page-number alignment.
-- Treat Word structure evidence as the final evidence for fonts, bold boundaries, label/body split formatting, TOC special entries, and tail-section style drift.
-- If the school rules are silent, mark the point as `以模板为准` rather than inventing a hard rule.
+| 任务 | 必读参考 |
+| --- | --- |
+| 内容核对、文件依据、验收范围 | [content-audit.md](references/content-audit.md)、[format-rules.md](references/format-rules.md) |
+| 模板或教师可见约束 | [scau-template-comments.md](references/scau-template-comments.md)、[template-comment-rules.md](references/template-comment-rules.md) |
+| 封面与摘要 | [scau-frontmatter-map.md](references/scau-frontmatter-map.md) |
+| 内容装版路线 | [workflow.md](references/workflow.md) |
+| 多步骤或局部回灌 | [project-pipeline.md](references/project-pipeline.md) |
+| 图、表、文献载荷 | [block-manifest.md](references/block-manifest.md)、[table-manifest.md](references/table-manifest.md)、[reference-import.md](references/reference-import.md) 中对应项 |
+| Windows 大稿和定向修复 | [windows-word-com.md](references/windows-word-com.md)、[word-com-mode.md](references/word-com-mode.md) |
 
-## Bundled template assets
+## 检查内容时遵循文件证据
 
-- Default working template: `assets/template/scau-undergrad-thesis-template.docx`
-- Original source template: `assets/template/scau-undergrad-thesis-template.doc`
-- Preview reference: `assets/template/scau-undergrad-thesis-template-preview.pdf`
-- Official 2024 standard package: `assets/official-2024/`
+每个发现包含 `规则来源（文件/页码或批注ID） → 目标位置 → 观察值 → 要求 → 状态 → 修复或待确认动作`。
 
-In the public GitHub repository, the official school files and the derived template assets may be absent until the maintainer or user imports them locally.
-Before first use in the public repo, run `scripts/import_official_2024_assets.py` to populate `assets/official-2024/` and regenerate the working `.docx` and preview PDF.
-The bundled `.docx` and preview PDF, when present, are derived from the official 2024 `附件6` Word template.
-If the user supplies a newer official template, only switch after confirming it supersedes the 2024 package and then refresh the comment mapping before bulk insertion.
-If the workspace does not follow the original Chinese folder names, keep using explicit paths or let the scripts fall back to the bundled template plus `_scau_thesis_output`.
+- 显式要求、模板版式值、工作流建议和人工判断分开记录。农科四章结构是参考结构，不能强行改掉其他学科的合法章节组织。
+- 按附件6批注29核对中文摘要 300–600 字、引用候选；按批注30核对中文关键词 3–5 个、全角分号及末尾无标点。记录计数口径，边界值与混合文字需确认，不能自行补写摘要。
+- 批注34、35提供英文摘要与关键词格式；没有英文摘要固定字数的摘录依据，不添加字数阈值。中英文题目、摘要、关键词的含义及数据一致性需要逐项比对。
+- 检查模板占位残留、空模块、章节和图表编号、文内图表指向及引用与文献的双向对应。正则只能提供引用候选，不能独自认定来源真实性或引用完整。
+- 摘要是否覆盖目的、方法、结果、结论，研究数据是否一致、来源是否支持主张，由源稿与证据判断。无法从现有材料证实的内容列入 `manual_confirm`。
+- 附录和缩略词表按实际需要；工作阶段可保留待填模块，终稿中的必需内容缺失、样例文献、占位致谢必须列为未完成。
 
-## Read these references as needed
+先运行跨平台只读预检：
 
-- `references/workflow.md`
-  - use before choosing front matter, chapter, figure, table, or reference insertion mode
-- `references/scau-frontmatter-map.md`
-  - use before filling cover, Chinese abstract, English abstract, keywords, and author blocks
-- `references/scau-template-comments.md`
-  - use before touching any teacher-visible template-constrained region
-- `references/format-rules.md`
-  - use for school rules and confirmed project conventions
-- `references/template-comment-rules.md`
-  - use for teacher-visible details such as `目录`, `参考文献`, `致谢`, `Abstract:`, `Key words:`, citation punctuation, and subfigure labels
-- `references/windows-word-com.md`
-  - use when the file is local, large, and needs repeated in-place repair
-- `references/project-pipeline.md`
-  - use when the current thesis workspace already has stable chapter, figure, table, and reference paths
-- `references/reference-import.md`, `references/block-manifest.md`, `references/table-manifest.md`
-  - use for bibliography, figure, and table insertion payloads
+```bash
+python scripts/inspect_thesis_content.py working.docx --output content-audit.json
+```
 
-## Main workflow
+它核对 DOCX 文本与结构信号，并输出来源、位置和未验证范围。不能替代学术核查、Word 字体检查或页面渲染。旧 `inspect_word_report.py` 的统计和 `detected` 状态只说明检测到了模块。
 
-1. Identify the mode:
-   - initialize a working thesis document
-   - fill front matter
-   - insert one chapter
-   - insert figures or tables
-   - insert or reformat references
-   - full thesis assembly
-   - final format audit
-   - audit and repair loop
-2. Choose the template source:
-   - prefer the bundled `assets/template/scau-undergrad-thesis-template.docx`
-   - if the user provides a newer official template, switch to that file
-3. Build or refresh the working document:
-   - keep a commented working copy
-   - keep a separate clean submission copy for the end
-4. Fill content into the template:
-   - front matter: `scripts/fill_scau_frontmatter.py`
-     - it can fill cover metadata, Chinese abstract, Chinese keywords, English abstract, and English keywords when those values are present in the metadata JSON
-   - Markdown chapter insertion: `scripts/insert_markdown_chapter.py`
-   - figures: `scripts/insert_figure_blocks.py` or `scripts/insert_figure_blocks_com.py`
-   - tables: `scripts/insert_table_blocks.py`
-   - references: `scripts/insert_reference_batch.py`
-   - project-level orchestration: `scripts/run_scau_project_pipeline.py`
-5. Export and audit:
-   - structure and statistics: `scripts/inspect_word_report.py`
-   - font, label/body split, TOC special entries, bibliography/acknowledgement style drift: `scripts/inspect_word_format_signatures.py`
-   - Word to PDF: `scripts/export_word_to_pdf.py` or `scripts/export_word_preview.ps1`
-   - render pages: `scripts/render_pdf_pages.py`
-   - figure block audit when needed: `scripts/inspect_figure_layout.py`
-6. Classify each issue:
-   - insertion problem
-   - template-mapping problem
-   - rendered-layout problem
-   - font/style drift problem
-   - bibliography/citation problem
-7. Repair only the right layer:
-   - content landed in the wrong structural place: rerun the relevant insertion script
-   - TOC, tail sections, page breaks, or local font drift: use `scripts/batch_word_ops.py`
-   - citations or bibliography formatting only: fix the reference section and recheck
-8. Re-export, rerender, and re-audit until the remaining issues are only `manual_confirm` items or acceptable template choices.
-9. Only at the end, create the clean submission copy:
-   - `scripts/finalize_submission_copy.ps1`
-   - `scripts/strip_docx_comments.py` if direct OOXML comment stripping is safer
+## 合理高效回灌
 
-## Maintainer acceptance
+1. 回灌前核对目标标题、范围、所需样式 donor 和源载荷。Markdown 一次提供一个带编号章；不支持或不明确的结构先转换为受支持的内容，不把复杂对象悄悄丢掉。
+2. 根据范围选择脚本：
+   - 封面/摘要：`scripts/fill_scau_frontmatter.py`。使用标签定位，校验 cover runs；拆分字段或字段后残留非空文本时停止，改用 Word 定向编辑。摘要换行保留段落，省略的摘要/关键词保持原值。
+   - 单章：`scripts/insert_markdown_chapter.py`。替换目标章内容，保留其他章节；标题改名按章节编号定位。
+   - 图：`scripts/insert_figure_blocks.py`；Windows 大稿可用 `scripts/insert_figure_blocks_com.py`。
+   - 表：`scripts/insert_table_blocks.py`；图表另有 manifest 时避免与 Markdown 表重复插入。
+   - 文献：`scripts/insert_reference_batch.py`；源条目先核验，按适用文件排序，不自动补全未知著录信息。
+   - 多步编排：`scripts/run_scau_project_pipeline.py`。局部范围使用相应 skip 参数，读取 project-pipeline.md，不要求被跳过步骤的输入。
+3. 首轮从模板初始化时，只在样例区与模板吻合的前提下清理样例；已有工作稿默认保留其他章节。重复运行需核对章标题、图表顺序和旧表残留。目标章有既有图片或无 Markdown 载荷的表时默认停止；只有核对完整重建清单后才使用 `--replace-media` / `--replace-tables`（runner 同名参数）。图表单独插入脚本不保证幂等，重跑前核对已插对象，避免重复。
+4. 检查保存后的 Word：目标段落/表格/图片数量、次序、源文本与目标文本对应、非目标模块是否保持。编号、图题、表题、文献排序等允许变动须单列，不用全文字数相等代替内容核对。
+5. 正文或目录相关条目改变后，最终刷新目录。runner 的 `--finalize-contents` 为 Windows Word 的显式目录收尾，不自动对全文做宽泛样式修复。
+6. 大稿保留阶段副本。每阶段只做一组相关操作，用一个 Word 会话完成该组，保存一次；失败从最新有效阶段恢复。不要每改一段就启动 Word、更新全目录或重导出整篇。
 
-When updating this skill for open-source reuse, preserve these acceptance conditions:
+回灌含修订、内容控件、域、公式、嵌套表或其他复杂对象时，先确认脚本覆盖范围；不能保证保留的区间采用 Word 定向编辑，不将只处理普通段落的脚本强套到复杂文档。
 
-1. `可复用`
-   - do not leave thesis-topic-specific details from any one project
-   - the skill must still work when the workspace uses generic names such as `metadata.json`, `work`, or `_scau_thesis_output`
-2. `模板吃透`
-   - rules must stay aligned with the 2024 official source package and the 50 template comments extracted from `附件6`
-   - front-matter anchor mapping must match the current converted template
-3. `装版与小修可验证`
-   - large chapter backfill from Markdown must still succeed
-   - small wording replacement must still preserve body fonts and paragraph formatting
+## 格式检查与修复
 
-Use `scripts/smoke_test_scau_skill.py` after template, rule, or script changes. The smoke test verifies:
+- `scripts/inspect_word_report.py`：Windows Word 基础统计与结构信号。
+- `scripts/inspect_word_format_signatures.py`：字符格式、标签/正文边界、目录和尾部样式；区分代表段落抽样与扫描数量。
+- `scripts/export_word_to_pdf.py` 或 `scripts/export_word_preview.ps1`：Word 导出。
+- `scripts/render_pdf_pages.py`：页面图片；必要时用 `scripts/inspect_figure_layout.py` 检查图块。
 
-- no project-specific residue in text files
-- bundled template comment count still matches the expected 2024 template
-- front matter can be filled into the bundled template
-- one generic chapter can be inserted
-- one local wording replacement can be applied without body-font drift
+字体、字号、标签加粗和缩进以 Word 结构为证；分页、图与图题同页、表题/表注位置、续表、声明页无页码、目录页码以真实页面为证。两字距缩进可用字符单位或结合字体验证等效磅值；摘要独立页可通过段前分页或分页型分节实现。模板未明写的值不得宣称为学校硬性规定。
 
-When validating that a project-specific skill has been generalized, pass the former project terms through repeated `--banned-token` flags so the residue scan stays project-aware without hard-coding those terms into the shared skill.
+修复选择正确层：落错位置回到对应回灌步骤；目录、局部字体、分页问题用 `scripts/batch_word_ops.py` 做目标操作。常见操作包括 `replace_text`、`ensure_page_break_before`、`normalize_tail_section_fonts`、`cleanup_contents_entries`、`normalize_contents_fonts` 和 `finalize_contents`，细节见 Word COM references。
 
-## Repair routing
+批量替换前关闭修订记录；已有修订须保留或按用户要求处理。标题变更需完整目录更新；仅页码改变可更新页码；清理目录里的“参考文献”“致谢”空格在域更新后完成。不要把模板例值归一化到所有布局表或非目标区。
 
-Use these default repair routes.
+修复后重查受影响内容和版式；最终另做整体复查。若相同问题连续两轮没有改善，保留有效副本、报告阻碍和人工处理位置，不无限循环或重建全文。
 
-- If the problem is `front matter mapping`, go back to `fill_scau_frontmatter.py`.
-- If the problem is `chapter text landed with wrong structure`, go back to `insert_markdown_chapter.py`.
-- If the problem is `figure block order or pagination`, go back to the figure insertion step or repair in one Word COM session.
-- If the problem is `table continuation or note placement`, go back to table insertion or repair in place.
-- If the problem is `目录 special entry spacing`, use `cleanup_contents_entries`.
-- If the problem is `参考文献 / 致谢 title-body font drift`, use `normalize_tail_section_fonts`.
-- If the problem is `full TOC refresh is too heavy`, do not force a full field update just to clean `参考文献` and `致谢`; use `page_numbers_only` refresh or TOC cleanup alone.
+## 验证与交付
 
-## Word COM repair rules
+维护代码后先运行公开仓库可执行的回归：
 
-When the thesis is large or the user is iterating near the end:
+```bash
+python -m unittest discover -s tests -v
+```
 
-- always start from comments + revisions together, not comments only
-- in each repair stage:
-  - keep one Word session
-  - apply only one coherent group of operations
-  - save to a new copy with `SaveAs2`
-  - re-export once
-  - re-audit once
-- for the next stage, open the newest copy and repeat
-- always disable revision recording before bulk text replacement, otherwise new revisions will keep growing
+覆盖内容定位、章节替换、表题顺序、重复回灌和局部范围保留。使用合成文档，不等同官方模板验收。具备 Windows Word 和导入模板时另运行 `scripts/smoke_test_scau_skill.py`，验证官方模板50条批注、真实 frontmatter、章回灌和小修字体签名。未执行的环境检查明确列出。
 
-For `scripts/batch_word_ops.py`, prefer these actions:
+交付工作 Word、实际已生成的预览 PDF、内容与格式报告；列明文件版本、依据、已检查范围、未完成内容和 `manual_confirm` 项。`confirmed` 仅用于有证据的具体检测项，不能据此宣称全文符合规定或可提交。
 
-- `set_track_revisions`
-  - set `enabled: false` before replacement-heavy stages
-- `accept_all_revisions`
-  - accept legacy revisions before content replacement stages when the user asks for a clean baseline
-- `delete_all_comments`
-  - optional and usually only for final clean-copy stages
-- `replace_text`
-  - now uses style-preserving replacement rather than a raw global replace
-- `insert_text_after`
-  - now copies surrounding font information for inserted text
-- `normalize_ascii_digit_font`
-  - use for targeted western-letter/digit font normalization
-  - default wildcard is `[A-Za-z0-9.]@` (includes periods so decimal values like `0.05` are normalized in one pass)
-- `refresh_contents`
-  - use `mode: "full"` only when headings really changed
-  - use `mode: "page_numbers_only"` when only pagination changed
-  - set `update_fields: true` for the final TOC pass so field results settle before cleanup
-- `cleanup_contents_entries`
-  - removes heading-line spacing leakage from TOC `参考文献` and `致谢`
-- `normalize_contents_fonts`
-  - only changes TOC range (does not touch end-of-document `参考文献` / `致谢` sections)
-  - normalize TOC Chinese chars to `宋体`; English/digits/`.` to `Times New Roman`
-- `ensure_page_break_before`
-  - use for hard section boundaries such as the start of the English abstract
-  - prefer `section: "english_abstract"` so the repair stays template-aware and idempotent
-- `normalize_body_paragraph_layout`
-  - use to restore正文 paragraphs to first-line indent `2`, `1.5` line spacing, and justified alignment
-  - excludes headings, figure/table captions, formulas, and table-cell paragraphs
-- `normalize_table_cells`
-  - use `target: "all"` to restore table-cell alignment to centered and clear wrong first-line indents
-  - use `target: "abbreviation"` with `apply_fonts: true` to restore the `英文缩略词（符号表）` table to `宋体 + Times New Roman` small-four and `1.5` line spacing
-- `finalize_contents`
-  - runs `refresh_contents(update_fields=true) -> cleanup_contents_entries -> normalize_contents_fonts` in one precise sequence
-- `normalize_tail_section_fonts`
-  - restores `参考文献` and `致谢` title/body fonts, bibliography hanging indent, acknowledgement first-line indent, and 1.5-line spacing
-- `--log-jsonl`
-  - write per-stage progress events for long documents so stuck points are traceable
-
-## High-risk final checks
-
-Always prioritize these before declaring the thesis submission-ready:
-
-- `摘        要`, `关键词：`, `Abstract:`, `Key words:` label/body font boundaries
-- Chinese abstract and English abstract boundary:
-  - the English abstract must start with an explicit page break, not only a natural overflow to the next page
-- main body paragraph font pairing, small-four size, and first-line indent
-- main body paragraph first-line indent must be exactly `2` characters, not `1.8` or approximate values
-- `参  考  文  献` heading spacing versus TOC `参考文献` no-spacing
-- `致        谢` heading spacing versus TOC `致谢` no-spacing
-- bibliography entry font pairing, punctuation, hanging indent, and language grouping
-- bibliography ordering rule:
-  - Chinese first
-  - western-language and Russian references second
-  - Chinese entries sorted by the first author's surname in Hanyu Pinyin order
-  - western-language and Russian entries sorted by the first author's surname in alphabetical order
-- citation punctuation width and ordering
-- TOC high-risk pair:
-  - TOC `参考文献` / `致谢` entries must not keep heading-character spacing
-  - TOC font pairing must be Chinese `宋体`, English/digits/`.` `Times New Roman`
-- body repeated punctuation check for accidental duplicates such as `。。`, `，，`, `；；`, `：：`
-- body paragraph line spacing should remain `1.5` (`LineSpacingRule = 1`), excluding table-cell paragraphs
-- table-cell paragraphs should stay centered
-- the `英文缩略词（符号表）` table should stay `宋体 + Times New Roman` small-four, centered, and `1.5` line spacing
-- figure caption below figure, figure note below caption, no figure-caption split across pages
-- continued table headers and table-note placement
-- TOC page numbers aligned with the rendered file
-
-## What not to do
-
-- Do not recreate the thesis layout from scratch in a blank document.
-- Do not treat PDF text extraction as the main basis for Chinese layout decisions.
-- Do not use full TOC refresh as the default final-step cleanup when a lighter cleanup path is enough.
-- Do not rewrite prose just to solve a formatting problem.
-- Do not remove comments before the working copy has been verified.
-- Do not leave `TrackRevisions` enabled during bulk global replacements.
-- Do not rely on `document.Save()` for large final-stage documents when `SaveAs2` stage copies are feasible.
-
-## Expected outputs
-
-If the user asks to assemble the thesis:
-
-- return the working Word file path
-- return the preview PDF path if exported
-- list any confirmed format issues that still remain
-
-If the user asks to audit:
-
-- return a compact report with:
-  - basic file facts
-  - structure overview
-  - statistics if available
-  - high-risk issues first
-  - issue classification by repair layer
-  - `问题 -> 已采取修正 -> 修正后复查结果` when repairs were made
-
-If the user asks for a final submission version:
-
-- produce the clean submission copy
-- confirm whether comments were removed
-- confirm whether TOC cleanup and tail-section font checks were re-run
-- state any remaining `manual_confirm` items explicitly
+用户需要提交版时，在工作稿验收后另存清洁副本：`scripts/finalize_submission_copy.ps1` 或 `scripts/strip_docx_comments.py`。检查批注/修订处理结果，复核目录与尾部格式，并再次确认清洁副本页面。未完成内容或缺渲染证据时如实说明。

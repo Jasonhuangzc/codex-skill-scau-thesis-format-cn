@@ -76,6 +76,14 @@ def sort_reference_entries(entries: Iterable[str]) -> list[str]:
     cleaned_entries = [strip_entry_prefix(entry) for entry in entries if strip_entry_prefix(entry)]
     cn_entries = [entry for entry in cleaned_entries if detect_reference_language(entry) == "cn"]
     foreign_entries = [entry for entry in cleaned_entries if detect_reference_language(entry) != "cn"]
+    for entry in cn_entries:
+        _, backend = _pinyin_key(first_author_token(entry))
+        if backend != "pypinyin":
+            raise RuntimeError(
+                "Reliable Hanyu Pinyin reference sorting requires pypinyin. "
+                "Install it with `python -m pip install pypinyin`; raw Unicode or an "
+                "unspecified Chinese locale is not evidence of surname order."
+            )
     return sorted(cn_entries, key=reference_sort_key) + sorted(foreign_entries, key=reference_sort_key)
 
 
@@ -145,12 +153,14 @@ def inspect_reference_sequence(entries: Iterable[str]) -> dict[str, object]:
             previous_author = item["first_author_token"]
 
     return {
-        "status": "confirmed" if not issues else "suggested",
+        "status": ("manual_confirm" if chinese_backend not in {"n/a", "pypinyin"}
+                   else "confirmed" if not issues else "suggested"),
         "expected": "参考文献应先列中文，再列西文/俄文；中文按第一著者姓氏汉语拼音字母顺序，西文和俄文按第一著者姓氏字母顺序。",
         "entry_count": len(sequence),
         "cn_count": sum(1 for item in sequence if item["language"] == "cn"),
         "foreign_count": sum(1 for item in sequence if item["language"] != "cn"),
         "chinese_collation_backend": chinese_backend,
+        "scope": "language grouping and automated author keys; verify compound/polyphonic surnames and foreign-language subgroups against the applicable file",
         "issues": issues[:40],
         "sequence_sample": sequence[:20],
     }
