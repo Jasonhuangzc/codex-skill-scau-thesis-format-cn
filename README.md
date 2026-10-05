@@ -58,7 +58,7 @@ python -m unittest discover -s tests -v
 
 当前 64 项合成文档/CLI 回归及 GitHub CI 已通过。真实模板需另跑 Windows Word 冒烟测试并检查导出页面。
 
-内容预检仅需 Python 标准库；Word COM、字体检查、模板转存与目录刷新需要 Windows + Word。更新章节后需刷新目录；Windows runner 可加 `--finalize-contents`。
+内容预检仅需 Python 标准库；Word COM、脚本字体检查、模板转存与自动目录刷新需要 Windows + Word。更新章节后需刷新目录；Windows runner 可加 `--finalize-contents`。
 
 原文件缺失时报告“摘录依据，原文未复验”。中英文语义、数据与文献真实性需源材料核对；文本预检不代表全文合规，不补写研究结果。
 
